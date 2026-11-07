@@ -121,6 +121,9 @@
   .frames i.on { background: var(--text); }
   .frames i.nc { background: rgba(61,139,255,.35); }
   .frames i.nc.on { background: var(--rain); }
+  /* Radar DPC: lo stile originale disegna la pioggia quasi trasparente;
+     il filtro #dpcColor (in fondo alla pagina) la rende visibile a colori */
+  .dpc-tile img { filter: url(#dpcColor); }
   .leaflet-control-attribution { font-size: 1.3vh !important; background: rgba(11,15,20,.7) !important; color: var(--dim) !important; margin-bottom: 2.6vh !important; }
   .leaflet-control-attribution a { color: var(--muted) !important; }
 
@@ -219,7 +222,7 @@
     <section class="right">
       <div class="radar">
         <div id="map"></div>
-        <div class="radar-info"><span class="lbl">Radar</span><span class="t num" id="radarTime">--:--</span><span class="lbl" id="radarRel"></span></div>
+        <div class="radar-info"><span class="lbl" id="radarSrc">Radar</span><span class="t num" id="radarTime">--:--</span><span class="lbl" id="radarRel"></span></div>
         <div class="frames" id="frames"></div>
       </div>
 
@@ -236,7 +239,28 @@
     </section>
   </main>
 </div>
-<div class="credits">Dati: MeteoNetwork (CC-BY 4.0) · Open-Meteo · RainViewer · Esri</div>
+<div class="credits">Dati: MeteoNetwork (CC-BY 4.0) · Open-Meteo · Radar-DPC, Dipartimento della Protezione Civile (CC BY-SA 4.0) · RainViewer · Esri</div>
+
+<!-- Filtro colori per il radar DPC -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="dpcColor" color-interpolation-filters="sRGB" x="0" y="0" width="1" height="1">
+    <!-- 1) maschera: tengo solo i pixel colorati (pioggia), elimino l'ombreggiatura nera di copertura -->
+    <feColorMatrix in="SourceGraphic" type="matrix" result="mask"
+      values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 3 3 0 0"/>
+    <!-- 2) l'opacità originale cresce con l'intensità: la trasformo in un livello di grigio -->
+    <feColorMatrix in="SourceGraphic" type="matrix" result="lvl"
+      values="0 0 0 2 0  0 0 0 2 0  0 0 0 2 0  0 0 0 0 1"/>
+    <!-- 3) livello → scala colori (azzurro → blu → verde → giallo → rosso → viola) -->
+    <feComponentTransfer in="lvl" result="col">
+      <feFuncR type="table" tableValues="0.55 0.25 0.10 0.10 0.60 1.00 1.00 1.00 0.90 0.90 1.00"/>
+      <feFuncG type="table" tableValues="0.75 0.55 0.40 0.80 0.90 0.90 0.60 0.25 0.10 0.20 0.50"/>
+      <feFuncB type="table" tableValues="1.00 1.00 0.95 0.40 0.20 0.10 0.05 0.10 0.20 0.80 1.00"/>
+      <feFuncA type="linear" slope="0" intercept="0.85"/>
+    </feComponentTransfer>
+    <!-- 4) applico la maschera -->
+    <feComposite in="col" in2="mask" operator="in"/>
+  </filter>
+</svg>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -262,7 +286,7 @@ const CONFIG = {
 /* ===================================================================== */
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const DEMO = params.get('demo'); // ?demo=1  ?demo=stale  ?demo=rain  ?demo=off
+const DEMO = params.get('demo'); // ?demo=1  ?demo=stale  ?demo=rain  ?demo=raining  ?demo=off
 const pad = (n) => String(n).padStart(2, '0');
 const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
@@ -288,7 +312,6 @@ let station = null;     // ultimo dato ricevuto
 let stationError = null;
 
 const DIRS_IT = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
-const EN2IT = { W: 'O', SW: 'SO', NW: 'NO', WSW: 'OSO', WNW: 'ONO', SSW: 'SSO', NNW: 'NNO' };
 function dirName(deg, card) {
   if (deg !== null) return DIRS_IT[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
   if (!card) return '—';
@@ -318,6 +341,7 @@ async function loadStation() {
     stationError = e.message || String(e);
   }
   renderStation();
+  renderAlert(); // "Sta piovendo" dipende dai dati della stazione
 }
 
 /* Pioggia ultima ora: l'API dà solo "pioggia da mezzanotte".
@@ -330,16 +354,42 @@ function recordRain(d) {
   h = h.filter(x => x.t > t.getTime() - 3 * 3600e3).sort((a, b) => a.t - b.t);
   store.set('rainHist', h);
 }
-function rainLastHour(obsMs) {
-  if (DEMO && DEMO !== 'off') return 0.4;
-  const h = store.get('rainHist', []).filter(x => x.t <= obsMs && x.t >= obsMs - 65 * 60e3);
-  if (h.length < 2 || h[0].t > obsMs - 45 * 60e3) return null; // storico insufficiente
+function sumIncrements(h) {
   let sum = 0;
   for (let i = 1; i < h.length; i++) {
     const inc = h[i].r - h[i - 1].r;
     sum += inc >= 0 ? inc : h[i].r; // azzeramento a mezzanotte
   }
   return sum;
+}
+function rainLastHour(obsMs) {
+  if (DEMO && DEMO !== 'off') return 0.4;
+  const h = store.get('rainHist', []).filter(x => x.t <= obsMs && x.t >= obsMs - 65 * 60e3);
+  if (h.length < 2 || h[0].t > obsMs - 45 * 60e3) return null; // storico insufficiente
+  return sumIncrements(h);
+}
+
+/* Sta piovendo adesso? Secondo la stazione: intensità > 0 oppure
+   pioggia di oggi aumentata nelle letture degli ultimi 20 minuti.
+   Restituisce { mmh, measured } oppure null. */
+function stationRainNow() {
+  const d = station;
+  const obs = d ? parseUtc(d.observation_time_utc) : null;
+  if (!obs || (Date.now() - obs) / 60e3 > CONFIG.STALE_MIN) return null; // dato assente o vecchio
+  const rr = num(d.rain_rate);
+  if (rr !== null && rr > 0) return { mmh: rr, measured: true };
+  if (DEMO && DEMO !== 'off') return null;
+  const h = store.get('rainHist', []).filter(x => x.t <= obs.getTime() && x.t >= obs.getTime() - 20 * 60e3);
+  if (h.length < 2) return null;
+  const mm = sumIncrements(h);
+  const hours = (h[h.length - 1].t - h[0].t) / 3600e3;
+  if (mm <= 0 || hours <= 0) return null;
+  return { mmh: mm / hours, measured: false };
+}
+
+// Classe colore e nome dell'intensità, da mm/h
+function rainLevel(mmh) {
+  return mmh >= 8 ? ['heavy', 'forte'] : mmh >= 2.5 ? ['mod', 'moderata'] : ['', 'debole'];
 }
 
 function setVal(id, text, unit) {
@@ -350,7 +400,7 @@ function showNotice(title, text) {
   $('noticeTitle').textContent = title || '';
   $('noticeText').textContent = text || '';
 }
-function blankStation(stale) {
+function blankStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
   setVal('temp', '—', '°C'); $('tmax').textContent = '—'; $('tmin').textContent = '—';
   setVal('rh', '—', '%'); $('rhBar').style.width = '0';
@@ -420,15 +470,25 @@ function demoStation() {
   const iso = t.toISOString().slice(0, 19).replace('T', ' ');
   return {
     observation_time_utc: iso, temperature: '9.4', current_tmin: '7.1', current_tmax: '12.6',
-    rh: '82', daily_rain: '8.9', rain_rate: '1.0', wind_speed: '7.2', wind_gust: '19.3',
+    rh: '82', daily_rain: '8.9', rain_rate: DEMO === 'raining' ? '3.2' : '0.0', wind_speed: '7.2', wind_gust: '19.3',
     wind_direction_degree: '292', wind_direction: 'WNW',
   };
 }
 
 /* =====================================================================
-   RADAR (RainViewer + Leaflet)
+   RADAR: Protezione Civile (Radar-DPC, prodotto SRI) con riserva RainViewer
    ===================================================================== */
+const DPC = {
+  API: 'https://radar-api.protezionecivile.it/findLastProductByType?type=SRI',
+  WMS: 'https://radar-geowebcache.protezionecivile.it/service/wms',
+  FRAMES: 13,      // ultima ora…
+  STEP_MIN: 5,     // …un'immagine ogni 5 minuti
+  ATTRIB: 'Radar © <a href="https://radar.protezionecivile.it/">Dipartimento della Protezione Civile – Radar-DPC</a> (CC BY-SA 4.0)',
+};
+const RADAR_REFRESH_MIN = 5;
+
 let map, radarLayers = [], radarFrames = [], frameIdx = 0, animTimer = null;
+let radarOpacity = 1, radarLoading = false, radarLoadedAt = 0;
 
 function initMap() {
   map = L.map('map', { zoomControl: false, attributionControl: true, fadeAnimation: false })
@@ -450,38 +510,104 @@ function initMap() {
 }
 
 async function loadRadar() {
+  if (radarLoading || Date.now() - radarLoadedAt < 60e3) return;
+  radarLoading = true;
   try {
-    const r = await fetch('https://api.rainviewer.com/public/weather-maps.json', { cache: 'no-store' });
-    const j = await r.json();
-    const past = (j.radar && j.radar.past) || [];
-    const nowcast = ((j.radar && j.radar.nowcast) || []).map(f => ({ ...f, nc: true }));
-    const frames = past.slice(-12).concat(nowcast);
-    if (!frames.length) throw new Error('nessun frame');
-
-    radarLayers.forEach(l => map.removeLayer(l));
-    radarFrames = frames;
-    radarLayers = frames.map(f => L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, {
-      opacity: 0, maxNativeZoom: 7, maxZoom: 12, zIndex: 10,
-      attribution: 'Radar <a href="https://www.rainviewer.com/">RainViewer</a>',
-    }).addTo(map));
-
-    $('frames').innerHTML = frames.map(f => `<i class="${f.nc ? 'nc' : ''}"></i>`).join('');
-    frameIdx = past.length ? Math.min(past.length, frames.length) - 1 : 0;
-    showFrame(frameIdx);
-    startAnim();
+    await loadRadarDPC();
   } catch (e) {
-    $('radarTime').textContent = 'n/d';
-    $('radarRel').textContent = 'radar non disponibile';
+    console.warn('Radar DPC non disponibile, uso RainViewer:', e.message);
+    try {
+      await loadRadarRainViewer();
+    } catch {
+      $('radarSrc').textContent = 'Radar';
+      $('radarTime').textContent = 'n/d';
+      $('radarRel').textContent = 'radar non disponibile';
+    }
   }
+  radarLoadedAt = Date.now();
+  radarLoading = false;
+}
+
+// Sostituisce i fotogrammi del radar sulla mappa e avvia l'animazione.
+// Ogni fotogramma: { time: millisecondi UTC, nc: true se è una previsione }
+function setRadarFrames(frames, makeLayer, label, opacity) {
+  radarLayers.forEach(l => map.removeLayer(l));
+  radarFrames = frames;
+  radarOpacity = opacity;
+  radarLayers = frames.map(f => makeLayer(f).addTo(map));
+  $('radarSrc').textContent = label;
+  $('frames').innerHTML = frames.map(f => `<i class="${f.nc ? 'nc' : ''}"></i>`).join('');
+  const lastPast = frames.filter(f => !f.nc).length - 1;
+  frameIdx = Math.max(0, lastPast);
+  showFrame(frameIdx);
+  startAnim();
+}
+
+async function loadRadarDPC() {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10e3);
+  let j;
+  try {
+    const r = await fetch(DPC.API, { cache: 'no-store', signal: ctrl.signal });
+    if (!r.ok) throw new Error('API DPC errore ' + r.status);
+    j = await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+  const p = j.lastProducts && j.lastProducts[0];
+  if (!p || !p.time) throw new Error('nessun prodotto SRI');
+
+  // L'istante più recente a volte non è ancora pronto sul server delle mappe:
+  // parto da quello precedente (5 minuti prima).
+  const step = DPC.STEP_MIN * 60e3;
+  const newest = p.time - step;
+  if (Date.now() - newest > 60 * 60e3) throw new Error('radar DPC non aggiornato');
+
+  const frames = [];
+  for (let k = DPC.FRAMES - 1; k >= 0; k--) frames.push({ time: newest - k * step });
+
+  setRadarFrames(frames, f => L.tileLayer.wms(DPC.WMS, {
+    layers: 'radar:sri', styles: '', format: 'image/png', transparent: true,
+    version: '1.1.1', tiled: true, time: new Date(f.time).toISOString(),
+    opacity: 0, zIndex: 10, maxZoom: 12, className: 'dpc-tile', attribution: DPC.ATTRIB,
+  }), 'Radar DPC', 1);
+
+  // Controllo che le immagini arrivino davvero; altrimenti passo alla riserva.
+  const probe = radarLayers[radarLayers.length - 1];
+  await new Promise((resolve, reject) => {
+    let loaded = 0, failed = 0;
+    const timeout = setTimeout(() => (loaded ? resolve() : reject(new Error('immagini DPC non caricate'))), 20e3);
+    probe.on('tileload', () => { loaded++; clearTimeout(timeout); resolve(); });
+    probe.on('tileerror', () => {
+      failed++;
+      if (failed >= 3 && !loaded) { clearTimeout(timeout); reject(new Error('errori immagini DPC')); }
+    });
+  });
+}
+
+async function loadRadarRainViewer() {
+  const r = await fetch('https://api.rainviewer.com/public/weather-maps.json', { cache: 'no-store' });
+  if (!r.ok) throw new Error('RainViewer errore ' + r.status);
+  const j = await r.json();
+  const past = ((j.radar && j.radar.past) || []).slice(-12);
+  const nowcast = ((j.radar && j.radar.nowcast) || []).map(f => ({ ...f, nc: true }));
+  const frames = past.concat(nowcast).map(f => ({ ...f, time: f.time * 1000 }));
+  if (!frames.length) throw new Error('nessun frame');
+
+  setRadarFrames(frames, f => L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+    opacity: 0, maxNativeZoom: 7, maxZoom: 12, zIndex: 10,
+    attribution: 'Radar <a href="https://www.rainviewer.com/">RainViewer</a>',
+  }), 'RainViewer', 0.8);
 }
 
 function showFrame(i) {
-  radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.8 : 0));
+  radarLayers.forEach((l, k) => l.setOpacity(k === i ? radarOpacity : 0));
   const f = radarFrames[i]; if (!f) return;
-  const t = new Date(f.time * 1000);
+  const t = new Date(f.time);
   $('radarTime').textContent = hhmm(t);
   const rel = Math.round((t - Date.now()) / 60e3);
-  $('radarRel').textContent = f.nc ? `previsione +${Math.max(0, rel)} min` : (i === radarFrames.filter(x => !x.nc).length - 1 ? 'ultimo' : `${-rel} min fa`);
+  const lastPast = radarFrames.filter(x => !x.nc).length - 1;
+  $('radarRel').textContent = f.nc ? `previsione +${Math.max(0, rel)} min` : (i === lastPast ? 'ultimo' : `${-rel} min fa`);
   [...$('frames').children].forEach((el, k) => el.classList.toggle('on', k === i));
 }
 
@@ -533,22 +659,36 @@ function renderAlert() {
     $('alertSub').textContent = sub;
   };
 
-  if (!slots) {
-    setState('err', '⚠️', 'Previsione non disponibile', forecastError ? 'Riprovo al prossimo aggiornamento' : '');
-    $('bars').innerHTML = '';
-    return;
-  }
-
   const now = Date.now();
-  const next = slots.filter(s => s.end > now && s.start < now + 90 * 60e3).slice(0, 6);
-  const first = next.find(s => s.mm >= CONFIG.RAIN_MM_15);
+  const isWet = (s) => s.mm >= CONFIG.RAIN_MM_15;
+  const next = slots ? slots.filter(s => s.end > now && s.start < now + 90 * 60e3).slice(0, 6) : [];
+  const first = next.find(isWet);
+  const wetRun = [];
+  if (first) for (const s of next.slice(next.indexOf(first))) { if (isWet(s)) wetRun.push(s); else break; }
+  const until = wetRun.length ? hhmm(new Date(wetRun[wetRun.length - 1].end)) : null;
 
   const max = Math.max(1, ...next.map(s => s.mm));
   $('bars').innerHTML = next.map(s => {
-    const wet = s.mm >= CONFIG.RAIN_MM_15;
-    const h = wet ? Math.max(12, (s.mm / max) * 100) : 4;
-    return `<div class="bar"><i class="${wet ? 'wet' : ''}" style="height:${h}%"></i><span class="num">${hhmm(new Date(Math.max(s.start, now)))}</span></div>`;
+    const h = isWet(s) ? Math.max(12, (s.mm / max) * 100) : 4;
+    return `<div class="bar"><i class="${isWet(s) ? 'wet' : ''}" style="height:${h}%"></i><span class="num">${hhmm(new Date(Math.max(s.start, now)))}</span></div>`;
   }).join('');
+
+  // 1) La stazione segna pioggia in corso: ha la precedenza sulle previsioni
+  const raining = stationRainNow();
+  if (raining) {
+    const lv = rainLevel(raining.mmh);
+    let sub = `Intensità ${lv[1]} · ${raining.measured ? '' : 'circa '}${fmt(raining.mmh)} mm/h (stazione)`;
+    if (until && first.start <= now + 15 * 60e3) sub += ` · prevista fino alle ${until} circa`;
+    setState(`rain ${lv[0]}`, '🌧️', 'Sta piovendo', sub);
+    return;
+  }
+
+  // 2) Altrimenti uso le previsioni di Open-Meteo
+  if (!slots) {
+    if (forecastError) setState('err', '⚠️', 'Previsione non disponibile', 'Riprovo al prossimo aggiornamento');
+    else setState('none', '☁️', 'Caricamento previsione…', '');
+    return;
+  }
 
   if (!first) {
     setState('none', '🌤️', 'Nessuna pioggia prevista', 'nei prossimi 90 minuti' + (forecastError ? ' · (dato non aggiornato)' : ''));
@@ -556,12 +696,9 @@ function renderAlert() {
   }
 
   const mins = Math.max(0, Math.round((first.start - now) / 60e3));
-  const wetRun = [];
-  for (const s of next.slice(next.indexOf(first))) { if (s.mm >= CONFIG.RAIN_MM_15) wetRun.push(s); else break; }
   const peakMmH = Math.max(...wetRun.map(s => s.mm)) * 4;
-  const total = next.reduce((a, s) => a + (s.mm >= CONFIG.RAIN_MM_15 ? s.mm : 0), 0);
-  const level = peakMmH >= 8 ? ['heavy', 'forte'] : peakMmH >= 2.5 ? ['mod', 'moderata'] : ['', 'debole'];
-  const until = hhmm(new Date(wetRun[wetRun.length - 1].end));
+  const total = next.reduce((a, s) => a + (isWet(s) ? s.mm : 0), 0);
+  const level = rainLevel(peakMmH);
   const sub = `Intensità ${level[1]} · fino alle ${until} circa · ${fmt(total)} mm previsti`;
 
   if (mins <= CONFIG.ALERT_WITHIN_MIN) {
@@ -618,6 +755,7 @@ setInterval(tickClock, 1000);
 initMap();
 refreshAll();
 setInterval(() => { lastRefresh = 0; refreshAll(); }, CONFIG.REFRESH_MIN * 60e3);
+setInterval(loadRadar, RADAR_REFRESH_MIN * 60e3);              // il radar DPC si aggiorna ogni 5 minuti
 setInterval(() => { renderStation(); renderAlert(); }, 30e3);   // età dati e "tra X minuti"
 setTimeout(() => location.reload(), 24 * 3600e3);              // ricarica completa 1 volta al giorno
 requestWakeLock();
