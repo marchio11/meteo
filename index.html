@@ -58,7 +58,8 @@
   main { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); min-height: 0; }
 
   /* ---------- left: station ---------- */
-  .left { display: grid; grid-template-rows: auto 1fr; gap: var(--gap); min-height: 0; }
+  /* colonna: avviso (se visibile) + riquadri che occupano tutto lo spazio restante */
+  .left { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
   .notice {
     display: none; align-items: center; gap: 1vw;
     font-size: 2.2vh; color: var(--warn); background: rgba(255,176,32,.08);
@@ -68,8 +69,8 @@
   .notice b { font-weight: 600; white-space: nowrap; }
   .notice span { color: var(--muted); }
   .tiles {
-    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1.3fr 1fr 1fr;
-    gap: var(--gap); min-height: 0;
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1.3fr 1fr 1fr auto;
+    gap: var(--gap); min-height: 0; flex: 1;
   }
   .tile {
     background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);
@@ -101,16 +102,25 @@
   .arrow { width: 8vh; height: 8vh; flex: none; transition: transform .8s; }
   .arrow.hidden { visibility: hidden; }
 
-  /* Griglia unica a 3 colonne (icona | scritta | orario): gli orari restano
-     allineati a destra qualunque sia la lunghezza di "Alba" o "Tramonto" */
-  .sun-rows {
-    margin-top: auto; display: grid; grid-template-columns: 6vh 1fr auto;
-    align-items: center; column-gap: 1vw; row-gap: 1.2vh; width: 100%;
-  }
-  .sun-row { display: contents; }
-  .sun-ic { font-size: 5vh; line-height: 1; text-align: center; }
-  .sun-k { font-size: 2.4vh; color: var(--muted); justify-self: start; }
-  .sun-t { font-size: 5.6vh; font-weight: 700; line-height: 1; justify-self: end; text-align: right; }
+  /* Striscia alba/tramonto in fondo: tutto su una riga, centrato */
+  .t-sunbar { grid-column: 1 / -1; justify-content: center; padding-top: 1vh; padding-bottom: 1vh; }
+  .sunbar { display: flex; align-items: center; justify-content: center; gap: .9vw; white-space: nowrap; }
+  .sun-ic { font-size: 4.2vh; line-height: 1; }
+  .sun-k { font-size: 2.6vh; color: var(--muted); }
+  .sun-t { font-size: 4.4vh; font-weight: 700; line-height: 1; }
+  .sun-sep { font-size: 3.6vh; color: var(--dim); margin: 0 1.4vw; }
+
+  /* Previsioni dei prossimi 2 giorni (Visual Crossing) */
+  .fc-days { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1vw; margin-top: .6vh; min-height: 0; }
+  .fc-day { display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; min-height: 0; }
+  .fc-day + .fc-day { border-left: 1px solid var(--line); }
+  .fc-name { font-size: 2.4vh; font-weight: 800; letter-spacing: .14em; color: var(--muted); }
+  .fc-ic { font-size: 6vh; line-height: 1; }
+  .fc-t { font-size: 3.4vh; font-weight: 700; white-space: nowrap; }
+  .fc-t .hi { color: var(--hot); }
+  .fc-t .lo { color: var(--cold); }
+  .fc-t .sl { color: var(--dim); font-weight: 400; margin: 0 .3vw; }
+  .fc-p { font-size: 2.4vh; color: var(--muted); white-space: nowrap; }
   .place .upd.old { color: var(--warn); }
 
   /* ---------- right: radar + alerts ---------- */
@@ -125,7 +135,7 @@
   }
   .radar-info .t { font-weight: 700; font-size: 2.8vh; }
   .radar-info .lbl { color: var(--muted); }
-  .frames { position: absolute; left: 1.2vh; right: 1.2vh; bottom: 1.2vh; z-index: 800; display: flex; gap: .4vw; pointer-events: none; }
+  .frames { position: absolute; left: 1.2vh; right: 1.2vh; bottom: 2.4vh; z-index: 800; display: flex; gap: .4vw; pointer-events: none; }
   .frames i { flex: 1; height: .7vh; border-radius: .5vh; background: rgba(255,255,255,.18); }
   .frames i.on { background: var(--text); }
   .frames i.nc { background: rgba(61,139,255,.35); }
@@ -133,8 +143,13 @@
   /* Radar DPC: lo stile originale disegna la pioggia quasi trasparente;
      il filtro #dpcColor (in fondo alla pagina) la rende visibile a colori */
   .dpc-tile img { filter: url(#dpcColor); }
-  .leaflet-control-attribution { font-size: 1.3vh !important; background: rgba(11,15,20,.7) !important; color: var(--dim) !important; margin-bottom: 2.6vh !important; }
-  .leaflet-control-attribution a { color: var(--muted) !important; }
+  /* Attribuzione della mappa: piccola e discreta, nell'angolo in basso a destra */
+  .leaflet-control-attribution {
+    font-size: 1vh !important; line-height: 1.5 !important; padding: 0 .5vw !important; margin: 0 !important;
+    background: rgba(11,15,20,.55) !important; color: var(--dim) !important; opacity: .7;
+    border-top-left-radius: .6vh;
+  }
+  .leaflet-control-attribution a { color: var(--dim) !important; }
 
   .alert {
     border-radius: var(--radius); border: 1px solid var(--line); background: var(--tile);
@@ -168,9 +183,20 @@
   .bar.obs span { font-weight: 700; color: var(--text); }
   .bar.fc i.wet { opacity: .55; }                /* previsione: più chiara della misura */
   .bars-note { font-size: 1.7vh; color: var(--dim); margin-top: .6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bars-note:empty { display: none; }
   .alert.rain .bars-note { color: rgba(255,255,255,.8); }
 
-  .credits { position: fixed; right: 1vw; bottom: .3vh; font-size: 1.3vh; color: var(--dim); }
+  /* ---------- riquadro fonti (pulsante ⓘ) ---------- */
+  .info-panel {
+    position: fixed; top: 9vh; right: 1.4vw; z-index: 2000; display: none;
+    background: rgba(20,27,36,.97); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 2vh 2vw; max-width: 46vw; box-shadow: 0 1vh 4vh rgba(0,0,0,.5);
+  }
+  .info-panel.show { display: block; }
+  .info-panel h3 { font-size: 2.4vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-bottom: 1.2vh; }
+  .info-panel ul { list-style: none; display: flex; flex-direction: column; gap: .9vh; }
+  .info-panel li { font-size: 2.2vh; line-height: 1.3; }
+  .info-panel li span { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -181,6 +207,7 @@
       <span class="wl" id="wl" title="Schermo sempre acceso"></span>
       <span class="date" id="date"></span>
       <span class="clock num" id="clock">--:--</span>
+      <button class="icon-btn" id="infoBtn" title="Fonti dei dati" aria-label="Fonti dei dati">ⓘ</button>
       <button class="icon-btn" id="fsBtn" title="Schermo intero" aria-label="Schermo intero">⛶</button>
     </div>
   </header>
@@ -225,13 +252,20 @@
           <div class="sub">Raffica <b class="num" id="gust">—</b> · da <b id="windDir">—</b></div>
         </div>
 
-        <div class="tile t-sun">
-          <div class="label">Alba e tramonto</div>
-          <div class="sun-rows">
-            <div class="sun-row"><span class="sun-ic" aria-hidden="true">☀️</span><span class="sun-k">Alba</span><span class="sun-t num" id="sunrise">—</span></div>
-            <div class="sun-row"><span class="sun-ic" aria-hidden="true">🌙</span><span class="sun-k">Tramonto</span><span class="sun-t num" id="sunset">—</span></div>
+        <div class="tile t-fc">
+          <div class="label">Prossimi giorni</div>
+          <div class="fc-days" id="fcDays">
+            <div class="fc-day"><div class="fc-name">—</div></div>
+            <div class="fc-day"><div class="fc-name">—</div></div>
           </div>
-          <div class="sub" id="dayLen"></div>
+        </div>
+
+        <div class="tile t-sunbar">
+          <div class="sunbar">
+            <span class="sun-ic" aria-hidden="true">☀️</span><span class="sun-k">Alba</span><span class="sun-t num" id="sunrise">—</span>
+            <span class="sun-sep">–</span>
+            <span class="sun-ic" aria-hidden="true">🌙</span><span class="sun-k">Tramonto</span><span class="sun-t num" id="sunset">—</span>
+          </div>
         </div>
       </div>
     </section>
@@ -258,7 +292,19 @@
     </section>
   </main>
 </div>
-<div class="credits">Dati: MeteoNetwork (CC-BY 4.0) · Visual Crossing · Open-Meteo · Radar-DPC, Dipartimento della Protezione Civile (CC BY-SA 4.0) · RainViewer · Esri</div>
+
+<!-- Fonti dei dati: si apre con il pulsante ⓘ, si chiude da solo dopo 8 secondi o con un tocco -->
+<div class="info-panel" id="infoPanel" role="dialog" aria-label="Fonti dei dati">
+  <h3>Fonti dei dati</h3>
+  <ul>
+    <li><b>MeteoNetwork</b> <span>– dati della stazione Celletta/Pentagono, Pesaro (licenza CC BY 4.0)</span></li>
+    <li><b>Visual Crossing</b> <span>– previsioni orarie e dei prossimi giorni</span></li>
+    <li><b>Open-Meteo</b> <span>– previsioni di riserva (licenza CC BY 4.0)</span></li>
+    <li><b>Radar-DPC, Dipartimento della Protezione Civile</b> <span>– radar delle precipitazioni (licenza CC BY-SA 4.0)</span></li>
+    <li><b>RainViewer</b> <span>– radar di riserva</span></li>
+    <li><b>Esri</b> <span>– mappa di base</span></li>
+  </ul>
+</div>
 
 <!-- Filtro colori per il radar DPC -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -348,8 +394,6 @@ function renderSun() {
   const { rise, set } = sunTimes(today, CONFIG.LAT, CONFIG.LON);
   $('sunrise').textContent = hhmm(rise);
   $('sunset').textContent = hhmm(set);
-  const mins = Math.round((set - rise) / 60e3);
-  $('dayLen').textContent = `Luce: ${Math.floor(mins / 60)} h ${pad(mins % 60)} min`;
 }
 
 /* =====================================================================
@@ -698,33 +742,92 @@ let slots = null, forecastError = null, forecastSource = 'Visual Crossing';
 
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-// Visual Crossing: gratuito senza chiave, dati orari per le coordinate di casa
+// Previsione dei prossimi giorni: { time (ms), icon (emoji), max, min, prob }
+let fcDays = null;
+
+// Icone Visual Crossing → emoji
+const VC_ICONS = {
+  'clear-day': '☀️', 'clear-night': '🌙', 'partly-cloudy-day': '⛅', 'partly-cloudy-night': '☁️',
+  'cloudy': '☁️', 'rain': '🌧️', 'showers-day': '🌦️', 'showers-night': '🌧️',
+  'thunder-rain': '⛈️', 'thunder-showers-day': '⛈️', 'thunder-showers-night': '⛈️',
+  'snow': '❄️', 'snow-showers-day': '🌨️', 'snow-showers-night': '🌨️', 'sleet': '🌨️',
+  'hail': '🌨️', 'fog': '🌫️', 'wind': '💨',
+};
+// Codici meteo WMO (Open-Meteo, riserva) → emoji
+function wmoIcon(c) {
+  if (c === 0) return '☀️';
+  if (c <= 2) return '⛅';
+  if (c === 3) return '☁️';
+  if (c <= 48) return '🌫️';
+  if (c <= 67 || (c >= 80 && c <= 82)) return '🌧️';
+  if (c <= 77 || c === 85 || c === 86) return '❄️';
+  return '⛈️';
+}
+
+// Visual Crossing: gratuito senza chiave, per le coordinate di casa (Pesaro).
+// Una sola richiesta per oggi + 2 giorni: ore (barre) e giorni (riquadro previsioni).
 async function forecastVisualCrossing() {
-  const today = new Date(), tomorrow = new Date(Date.now() + 864e5);
+  const today = new Date(), last = new Date(Date.now() + 2 * 864e5);
   const u = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/' +
-    `${CONFIG.LAT},${CONFIG.LON}/${ymd(today)}/${ymd(tomorrow)}` +
-    '?unitGroup=metric&include=hours&elements=datetimeEpoch,precip,precipprob&contentType=json';
+    `${CONFIG.LAT},${CONFIG.LON}/${ymd(today)}/${ymd(last)}` +
+    '?unitGroup=metric&include=days,hours&elements=datetimeEpoch,precip,precipprob,tempmax,tempmin,icon&contentType=json';
   const r = await fetch(u, { cache: 'no-store' });
   if (!r.ok) throw new Error('Visual Crossing errore ' + r.status);
   const j = await r.json();
-  const hours = (j.days || []).flatMap(d => d.hours || []);
+  const days = j.days || [];
+  const hours = days.flatMap(d => d.hours || []);
   if (!hours.length) throw new Error('Visual Crossing senza dati');
   // L'orario indicato è l'inizio dell'ora (come sul sito Visual Crossing)
-  return hours.map(h => ({
+  const slots = hours.map(h => ({
     start: h.datetimeEpoch * 1000, end: h.datetimeEpoch * 1000 + 3600e3,
     mm: h.precip ?? 0, prob: h.precipprob ?? null,
   }));
+  const daily = days.slice(1, 3).map(d => ({
+    time: d.datetimeEpoch * 1000, icon: VC_ICONS[d.icon] || '☁️',
+    max: num(d.tempmax), min: num(d.tempmin), prob: num(d.precipprob),
+  }));
+  return { slots, daily };
 }
 
-// Riserva: Open-Meteo orario (il valore è la pioggia dell'ora PRECEDENTE all'orario)
+// Riserva: Open-Meteo (il valore orario è la pioggia dell'ora PRECEDENTE all'orario)
 async function forecastOpenMeteo() {
   const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
-    '&hourly=precipitation,precipitation_probability&past_hours=2&forecast_hours=12&timeformat=unixtime&timezone=auto';
+    '&hourly=precipitation,precipitation_probability&past_hours=2&forecast_hours=12' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=3' +
+    '&timeformat=unixtime&timezone=auto';
   const r = await fetch(u, { cache: 'no-store' });
   if (!r.ok) throw new Error('Open-Meteo errore ' + r.status);
   const j = await r.json();
   const t = j.hourly.time, p = j.hourly.precipitation, pr = j.hourly.precipitation_probability || [];
-  return t.map((ts, i) => ({ start: ts * 1000 - 3600e3, end: ts * 1000, mm: p[i] ?? 0, prob: pr[i] ?? null }));
+  const slots = t.map((ts, i) => ({ start: ts * 1000 - 3600e3, end: ts * 1000, mm: p[i] ?? 0, prob: pr[i] ?? null }));
+  const dd = j.daily || {};
+  const daily = (dd.time || []).slice(1, 3).map((ts, k) => {
+    const i = k + 1;
+    return {
+      time: ts * 1000, icon: wmoIcon(dd.weather_code[i]),
+      max: num(dd.temperature_2m_max[i]), min: num(dd.temperature_2m_min[i]),
+      prob: num(dd.precipitation_probability_max[i]),
+    };
+  });
+  return { slots, daily };
+}
+
+// Riquadro "Prossimi giorni": domani e dopodomani
+const DAY_ABBR = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
+function renderForecastDays() {
+  const box = $('fcDays');
+  if (!fcDays || !fcDays.length) {
+    box.innerHTML = '<div class="fc-day"><div class="fc-p">Previsione non disponibile</div></div>';
+    return;
+  }
+  const deg = (v) => (v === null ? '—' : Math.round(v) + '°');
+  box.innerHTML = fcDays.map(d => `
+    <div class="fc-day">
+      <div class="fc-name">${DAY_ABBR[new Date(d.time + 12 * 3600e3).getDay()]}</div>
+      <div class="fc-ic" aria-hidden="true">${d.icon}</div>
+      <div class="fc-t num"><span class="hi">${deg(d.max)}</span><span class="sl">/</span><span class="lo">${deg(d.min)}</span></div>
+      <div class="fc-p num">💧 ${d.prob === null ? '—' : Math.round(d.prob) + '%'}</div>
+    </div>`).join('');
 }
 
 async function loadForecast() {
@@ -734,20 +837,28 @@ async function loadForecast() {
       const h0 = Math.floor(Date.now() / 3600e3) * 3600e3;
       slots = [0, 1.2, 2.8, 0.9, 0.2, 0, 0].map((mm, i) => ({ start: h0 + i * 3600e3, end: h0 + (i + 1) * 3600e3, mm, prob: mm ? 90 : 5 }));
       forecastSource = 'demo';
+      fcDays = [
+        { time: h0 + 864e5, icon: '🌧️', max: 12.3, min: 7.9, prob: 94 },
+        { time: h0 + 2 * 864e5, icon: '⛅', max: 13.8, min: 7.7, prob: 36 },
+      ];
     } else {
+      let res;
       try {
-        slots = await forecastVisualCrossing();
+        res = await forecastVisualCrossing();
         forecastSource = 'Visual Crossing';
       } catch (e) {
         console.warn('Visual Crossing non disponibile, uso Open-Meteo:', e.message);
-        slots = await forecastOpenMeteo();
+        res = await forecastOpenMeteo();
         forecastSource = 'Open-Meteo';
       }
+      slots = res.slots;
+      fcDays = res.daily;
     }
     forecastError = null;
   } catch (e) {
     forecastError = e.message || String(e);
   }
+  renderForecastDays();
   renderAlert();
 }
 
@@ -852,7 +963,7 @@ function renderBars(future, now, raining, dryNow) {
   $('bars').innerHTML = html;
 
   // Coerenza tra misura (adesso) e previsione per l'ora in corso
-  let note = `Previsione oraria indicativa · ${forecastSource}`;
+  let note = ''; // di norma nessuna nota: compare solo se misura e previsione non concordano
   if (raining && current && !isWetHour(current) && !(hours[0] && isWetHour(hours[0]))) {
     note = `⚠ ${forecastSource} non prevede la pioggia in corso: previsione poco affidabile`;
   } else if (dryNow && current && isWetHour(current) && (current.prob ?? 100) >= 70) {
@@ -880,6 +991,17 @@ document.addEventListener('pointerdown', requestWakeLock);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { requestWakeLock(); refreshAll(); }
 });
+
+/* Pulsante ⓘ: mostra le fonti per 8 secondi; un secondo tocco lo chiude */
+let infoTimer = null;
+function closeInfo() { $('infoPanel').classList.remove('show'); clearTimeout(infoTimer); }
+$('infoBtn').addEventListener('click', () => {
+  if ($('infoPanel').classList.contains('show')) return closeInfo();
+  $('infoPanel').classList.add('show');
+  clearTimeout(infoTimer);
+  infoTimer = setTimeout(closeInfo, 8000);
+});
+$('infoPanel').addEventListener('click', closeInfo);
 
 $('fsBtn').addEventListener('click', async () => {
   try {
