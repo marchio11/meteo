@@ -78,6 +78,8 @@
   }
   .tile.stale .val, .tile.stale .sub { opacity: .35; }
   .label { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; }
+  .flag { font-size: 1.7vh; color: var(--warn); letter-spacing: .04em; text-transform: none; font-weight: 500; margin-left: .4vw; white-space: nowrap; }
+  .val.na { font-size: 3.6vh; color: var(--dim); font-weight: 500; }
   .val { font-size: 9vh; font-weight: 700; line-height: 1; margin-top: auto; }
   .val .u { font-size: .45em; color: var(--muted); font-weight: 500; margin-left: .15em; }
   .sub { font-size: 2.7vh; color: var(--muted); margin-top: 1vh; line-height: 1.35; }
@@ -188,7 +190,7 @@
         </div>
 
         <div class="tile" data-st>
-          <div class="label">Pioggia oggi</div>
+          <div class="label">Pioggia oggi <span class="flag" id="rainFlag"></span></div>
           <div class="val num" id="rainDay">—<span class="u">mm</span></div>
           <div class="sub">Ultima ora <b class="num" id="rainHour">—</b><br>Intensità <b class="num" id="rainRate">—</b></div>
         </div>
@@ -352,6 +354,7 @@ function blankStation(stale) {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
   setVal('temp', '—', '°C'); $('tmax').textContent = '—'; $('tmin').textContent = '—';
   setVal('rh', '—', '%'); $('rhBar').style.width = '0';
+  $('rainDay').classList.remove('na'); $('rainFlag').textContent = '';
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
   setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
   $('windArrow').classList.add('hidden');
@@ -394,9 +397,13 @@ function renderStation() {
   $('rhBar').style.width = (rh === null ? 0 : Math.min(100, rh)) + '%';
 
   const rd = num(d.daily_rain), rr = num(d.rain_rate), rlh = rainLastHour(obs.getTime());
-  setVal('rainDay', fmt(rd), 'mm');
-  $('rainHour').textContent = rlh === null ? 'in calcolo…' : fmt(rlh) + ' mm';
+  const rainNA = rd === null && rr === null;
+  $('rainDay').classList.toggle('na', rainNA);
+  if (rainNA) $('rainDay').textContent = 'Pluviometro non disponibile';
+  else setVal('rainDay', fmt(rd), 'mm');
+  $('rainHour').textContent = rd === null ? '—' : rlh === null ? 'in calcolo…' : fmt(rlh) + ' mm';
   $('rainRate').textContent = rr === null ? '—' : fmt(rr) + ' mm/h';
+  $('rainFlag').textContent = d.rain_unchecked ? '· non validato' : '';
 
   const ws = num(d.wind_speed), wg = num(d.wind_gust), wd = num(d.wind_direction_degree);
   setVal('wind', ws === null ? '—' : Math.round(ws), 'km/h');
