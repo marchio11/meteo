@@ -78,7 +78,6 @@
   }
   .tile.stale .val, .tile.stale .sub { opacity: .35; }
   .label { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; }
-  .flag { font-size: 1.7vh; color: var(--warn); letter-spacing: .04em; text-transform: none; font-weight: 500; margin-left: .4vw; white-space: nowrap; }
   .val.na { font-size: 3.6vh; color: var(--dim); font-weight: 500; }
   .val { font-size: 9vh; font-weight: 700; line-height: 1; margin-top: auto; }
   .val .u { font-size: .45em; color: var(--muted); font-weight: 500; margin-left: .15em; }
@@ -154,6 +153,10 @@
   .alert.rain .bar i { background: rgba(255,255,255,.3); }
   .alert.rain .bar i.wet { background: #fff; }
   .bars span { font-size: 1.9vh; color: var(--muted); }
+  .bar.obs span { font-weight: 700; color: var(--text); }
+  .bar.fc i.wet { opacity: .55; }                /* previsione: più chiara della misura */
+  .bars-note { font-size: 1.7vh; color: var(--dim); margin-top: .6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alert.rain .bars-note { color: rgba(255,255,255,.8); }
 
   .credits { position: fixed; right: 1vw; bottom: .3vh; font-size: 1.3vh; color: var(--dim); }
 </style>
@@ -193,7 +196,7 @@
         </div>
 
         <div class="tile" data-st>
-          <div class="label">Pioggia oggi <span class="flag" id="rainFlag"></span></div>
+          <div class="label">Pioggia oggi</div>
           <div class="val num" id="rainDay">—<span class="u">mm</span></div>
           <div class="sub">Ultima ora <b class="num" id="rainHour">—</b><br>Intensità <b class="num" id="rainRate">—</b></div>
         </div>
@@ -235,6 +238,7 @@
           </div>
         </div>
         <div class="bars" id="bars"></div>
+        <div class="bars-note" id="barsNote"></div>
       </div>
     </section>
   </main>
@@ -273,14 +277,15 @@ const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',
 
   STATION_LABEL: 'Stazione Montelabbate',
-  LAT: 43.8487,          // posizione di casa (per radar e previsione)
-  LON: 12.7888,
+  LAT: 43.86655146106417,  // posizione di casa (segnalino, centro radar, previsione)
+  LON: 12.839180387625616,
 
   REFRESH_MIN: 10,       // ogni quanti minuti ricaricare i dati
   STALE_MIN: 30,         // oltre quanti minuti un dato stazione è "vecchio"
   RAIN_MM_15: 0.1,       // mm in 15 minuti oltre cui consideriamo "pioggia"
   ALERT_WITHIN_MIN: 60,  // banner grande se la pioggia arriva entro…
   RADAR_ZOOM: 8,
+  FORECAST_BARS: true,   // false = nasconde le barre dei prossimi 90 minuti
 };
 
 /* ===================================================================== */
@@ -368,6 +373,13 @@ function rainLastHour(obsMs) {
   if (h.length < 2 || h[0].t > obsMs - 45 * 60e3) return null; // storico insufficiente
   return sumIncrements(h);
 }
+// Testo mostrato finché non ho abbastanza letture per l'ultima ora
+function lastHourPending() {
+  const h = store.get('rainHist', []);
+  if (!h.length) return 'in calcolo…';
+  const ready = new Date(h[0].t + 45 * 60e3);
+  return ready > Date.now() ? `dalle ${hhmm(ready)}` : 'in calcolo…';
+}
 
 /* Sta piovendo adesso? Secondo la stazione: intensità > 0 oppure
    pioggia di oggi aumentata nelle letture degli ultimi 20 minuti.
@@ -404,7 +416,7 @@ function blankStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
   setVal('temp', '—', '°C'); $('tmax').textContent = '—'; $('tmin').textContent = '—';
   setVal('rh', '—', '%'); $('rhBar').style.width = '0';
-  $('rainDay').classList.remove('na'); $('rainFlag').textContent = '';
+  $('rainDay').classList.remove('na');
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
   setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
   $('windArrow').classList.add('hidden');
@@ -451,9 +463,8 @@ function renderStation() {
   $('rainDay').classList.toggle('na', rainNA);
   if (rainNA) $('rainDay').textContent = 'Pluviometro non disponibile';
   else setVal('rainDay', fmt(rd), 'mm');
-  $('rainHour').textContent = rd === null ? '—' : rlh === null ? 'in calcolo…' : fmt(rlh) + ' mm';
+  $('rainHour').textContent = rd === null ? '—' : rlh === null ? lastHourPending() : fmt(rlh) + ' mm';
   $('rainRate').textContent = rr === null ? '—' : fmt(rr) + ' mm/h';
-  $('rainFlag').textContent = d.rain_unchecked ? '· non validato' : '';
 
   const ws = num(d.wind_speed), wg = num(d.wind_gust), wd = num(d.wind_direction_degree);
   setVal('wind', ws === null ? '—' : Math.round(ws), 'km/h');
@@ -625,7 +636,7 @@ function startAnim() {
 /* =====================================================================
    AVVISI PIOGGIA (Open-Meteo, dati a 15 minuti)
    ===================================================================== */
-let slots = null, forecastError = null;
+let slots = null, forecastError = null, forecastModel = 'Open-Meteo';
 
 async function loadForecast() {
   try {
@@ -634,14 +645,26 @@ async function loadForecast() {
       const t0 = Date.now() - 5 * 60e3;
       slots = [0, 0, 0.3, 0.8, 1.2, 0.5, 0.1].map((mm, i) => ({ start: t0 + i * 900e3, end: t0 + (i + 1) * 900e3, mm }));
     } else {
-      const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
-        `&minutely_15=precipitation&past_minutely_15=1&forecast_minutely_15=8&timeformat=unixtime&timezone=auto`;
-      const r = await fetch(u, { cache: 'no-store' });
-      if (!r.ok) throw new Error('errore ' + r.status);
-      const j = await r.json();
-      const t = j.minutely_15.time, p = j.minutely_15.precipitation;
-      // Ogni valore è la pioggia dei 15 minuti PRECEDENTI all'orario indicato
-      slots = t.map((ts, i) => ({ end: ts * 1000, start: ts * 1000 - 900e3, mm: p[i] ?? 0 }));
+      // ICON-D2 (servizio meteo tedesco DWD) copre Pesaro con dati nativi a 15 minuti;
+      // se non risponde uso la scelta automatica di Open-Meteo.
+      slots = null;
+      for (const model of ['icon_d2', 'best_match']) {
+        try {
+          const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
+            `&minutely_15=precipitation&past_minutely_15=1&forecast_minutely_15=8&timeformat=unixtime&timezone=auto&models=${model}`;
+          const r = await fetch(u, { cache: 'no-store' });
+          if (!r.ok) throw new Error('errore ' + r.status);
+          const j = await r.json();
+          const t = j.minutely_15.time, p = j.minutely_15.precipitation;
+          if (!p || p.every(v => v === null)) throw new Error('nessun dato');
+          // Ogni valore è la pioggia dei 15 minuti PRECEDENTI all'orario indicato
+          slots = t.map((ts, i) => ({ end: ts * 1000, start: ts * 1000 - 900e3, mm: p[i] ?? 0 }));
+          forecastModel = model === 'icon_d2' ? 'ICON-D2' : 'Open-Meteo';
+          break;
+        } catch (e) {
+          if (model === 'best_match') throw e;
+        }
+      }
     }
     forecastError = null;
   } catch (e) {
@@ -667,14 +690,11 @@ function renderAlert() {
   if (first) for (const s of next.slice(next.indexOf(first))) { if (isWet(s)) wetRun.push(s); else break; }
   const until = wetRun.length ? hhmm(new Date(wetRun[wetRun.length - 1].end)) : null;
 
-  const max = Math.max(1, ...next.map(s => s.mm));
-  $('bars').innerHTML = next.map(s => {
-    const h = isWet(s) ? Math.max(12, (s.mm / max) * 100) : 4;
-    return `<div class="bar"><i class="${isWet(s) ? 'wet' : ''}" style="height:${h}%"></i><span class="num">${hhmm(new Date(Math.max(s.start, now)))}</span></div>`;
-  }).join('');
+  const raining = stationRainNow();   // { mmh } se la stazione misura pioggia adesso
+  const dryNow = stationDryNow();     // true se la stazione è aggiornata e non piove
+  renderBars(next, now, raining, dryNow);
 
   // 1) La stazione segna pioggia in corso: ha la precedenza sulle previsioni
-  const raining = stationRainNow();
   if (raining) {
     const lv = rainLevel(raining.mmh);
     let sub = `Intensità ${lv[1]} · ${raining.measured ? '' : 'circa '}${fmt(raining.mmh)} mm/h (stazione)`;
@@ -702,11 +722,52 @@ function renderAlert() {
   const sub = `Intensità ${level[1]} · fino alle ${until} circa · ${fmt(total)} mm previsti`;
 
   if (mins <= CONFIG.ALERT_WITHIN_MIN) {
-    const title = mins <= 2 ? 'Pioggia in arrivo adesso' : `Pioggia tra ${mins} minuti`;
+    // Se il modello dice "adesso" ma la stazione non misura pioggia, resto prudente
+    const title = mins <= 2 ? (dryNow ? 'Possibile pioggia a breve' : 'Pioggia in arrivo adesso') : `Pioggia tra ${mins} minuti`;
     setState(`rain ${level[0]} ${mins <= 15 ? 'pulse' : ''}`, mins <= 2 ? '🌧️' : '☔', title, sub);
   } else {
     setState('later', '🌦️', `Possibile pioggia tra ${mins} minuti`, sub);
   }
+}
+
+// La stazione è aggiornata e non sta piovendo?
+function stationDryNow() {
+  const d = station;
+  const obs = d ? parseUtc(d.observation_time_utc) : null;
+  if (!obs || (Date.now() - obs) / 60e3 > CONFIG.STALE_MIN) return false;
+  return num(d.rain_rate) === 0 && !stationRainNow();
+}
+
+/* Riepilogo dei prossimi 90 minuti.
+   Prima barra "Ora" = pioggia MISURATA dalla stazione; le altre = previsione
+   del modello (più chiare). Sotto, una nota dice se le due cose concordano. */
+function renderBars(next, now, raining, dryNow) {
+  if (!CONFIG.FORECAST_BARS || !slots) {
+    $('bars').innerHTML = '';
+    $('barsNote').textContent = '';
+    return;
+  }
+  const mmh = (s) => s.mm * 4; // mm in 15 minuti → mm/h
+  const isWet = (s) => s.mm >= CONFIG.RAIN_MM_15;
+  const obsMmh = raining ? raining.mmh : dryNow ? 0 : null;
+  const max = Math.max(2, obsMmh || 0, ...next.map(mmh));
+  const height = (v, wet) => (wet ? Math.max(12, Math.min(100, (v / max) * 100)) : 4);
+
+  let html = '';
+  if (obsMmh !== null) {
+    html += `<div class="bar obs"><i class="${raining ? 'wet' : ''}" style="height:${height(obsMmh, !!raining)}%"></i><span>Ora</span></div>`;
+  }
+  html += next.slice(0, obsMmh !== null ? 5 : 6).map(s =>
+    `<div class="bar fc"><i class="${isWet(s) ? 'wet' : ''}" style="height:${height(mmh(s), isWet(s))}%"></i><span class="num">${hhmm(new Date(Math.max(s.start, now)))}</span></div>`
+  ).join('');
+  $('bars').innerHTML = html;
+
+  // Coerenza tra misura e previsione nei prossimi 30 minuti
+  const soonWet = next.slice(0, 2).some(isWet);
+  let note = `Previsione indicativa · modello ${forecastModel}`;
+  if (raining && !soonWet) note = `⚠ Il modello ${forecastModel} non vede la pioggia in corso: previsione poco affidabile`;
+  else if (dryNow && next.length && isWet(next[0]) && next[0].start <= now) note = `⚠ Il modello prevede pioggia ora ma la stazione non la misura: previsione indicativa`;
+  $('barsNote').textContent = note;
 }
 
 /* =====================================================================
