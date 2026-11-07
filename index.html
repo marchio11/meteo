@@ -78,16 +78,16 @@
     position: relative; transition: opacity .4s;
   }
   .tile.stale .val, .tile.stale .sub { opacity: .35; }
-  .label { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; }
+  .label { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; text-align: center; }
   .val.na { font-size: 3.6vh; color: var(--dim); font-weight: 500; }
   .val { font-size: 9vh; font-weight: 700; line-height: 1; margin-top: auto; }
   .val .u { font-size: .45em; color: var(--muted); font-weight: 500; margin-left: .15em; }
   .sub { font-size: 2.7vh; color: var(--muted); margin-top: 1vh; line-height: 1.35; }
   .sub b { color: var(--text); font-weight: 600; }
 
-  .t-temp { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 3vw; }
-  .t-temp .main { display: flex; flex-direction: column; height: 100%; flex: 1; }
-  .t-temp .val { font-size: 19vh; }
+  .t-temp { grid-column: 1 / -1; }
+  .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 3vw; min-height: 0; }
+  .t-temp .val { font-size: 19vh; margin-top: 0; }
   .minmax { display: flex; flex-direction: column; gap: 1.6vh; padding-right: 1vw; }
   .mm { display: flex; align-items: baseline; gap: .8vw; font-size: 6vh; font-weight: 700; }
   .mm .k { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; width: 4.5vw; font-weight: 600; }
@@ -102,13 +102,13 @@
   .arrow { width: 8vh; height: 8vh; flex: none; transition: transform .8s; }
   .arrow.hidden { visibility: hidden; }
 
-  /* Striscia alba/tramonto in fondo: tutto su una riga, centrato */
+  /* Striscia alba/tramonto in fondo: alba a sinistra, tramonto a destra */
   .t-sunbar { grid-column: 1 / -1; justify-content: center; padding-top: 1vh; padding-bottom: 1vh; }
-  .sunbar { display: flex; align-items: center; justify-content: center; gap: .9vw; white-space: nowrap; }
+  .sunbar { display: flex; align-items: center; justify-content: space-between; white-space: nowrap; }
+  .sun-grp { display: flex; align-items: center; gap: .9vw; }
   .sun-ic { font-size: 4.2vh; line-height: 1; }
   .sun-k { font-size: 2.6vh; color: var(--muted); }
   .sun-t { font-size: 4.4vh; font-weight: 700; line-height: 1; }
-  .sun-sep { font-size: 3.6vh; color: var(--dim); margin: 0 1.4vw; }
 
   /* Previsioni dei prossimi 2 giorni (Visual Crossing) */
   .fc-days { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1vw; margin-top: .6vh; min-height: 0; }
@@ -218,13 +218,13 @@
       <div class="notice" id="notice"><b id="noticeTitle"></b><span id="noticeText"></span></div>
       <div class="tiles">
         <div class="tile t-temp" data-st>
-          <div class="main">
-            <div class="label">Temperatura</div>
+          <div class="label">Temperatura</div>
+          <div class="temp-row">
             <div class="val num" id="temp">—<span class="u">°C</span></div>
-          </div>
-          <div class="minmax">
-            <div class="mm max num"><span class="k">Max</span><span id="tmax">—</span></div>
-            <div class="mm min num"><span class="k">Min</span><span id="tmin">—</span></div>
+            <div class="minmax">
+              <div class="mm max num"><span class="k">Max</span><span id="tmax">—</span></div>
+              <div class="mm min num"><span class="k">Min</span><span id="tmin">—</span></div>
+            </div>
           </div>
         </div>
 
@@ -262,9 +262,8 @@
 
         <div class="tile t-sunbar">
           <div class="sunbar">
-            <span class="sun-ic" aria-hidden="true">☀️</span><span class="sun-k">Alba</span><span class="sun-t num" id="sunrise">—</span>
-            <span class="sun-sep">–</span>
-            <span class="sun-ic" aria-hidden="true">🌙</span><span class="sun-k">Tramonto</span><span class="sun-t num" id="sunset">—</span>
+            <div class="sun-grp"><span class="sun-ic" aria-hidden="true">☀️</span><span class="sun-k">Alba</span><span class="sun-t num" id="sunrise">—</span></div>
+            <div class="sun-grp"><span class="sun-ic" aria-hidden="true">🌙</span><span class="sun-k">Tramonto</span><span class="sun-t num" id="sunset">—</span></div>
           </div>
         </div>
       </div>
@@ -825,7 +824,7 @@ function renderForecastDays() {
     <div class="fc-day">
       <div class="fc-name">${DAY_ABBR[new Date(d.time + 12 * 3600e3).getDay()]}</div>
       <div class="fc-ic" aria-hidden="true">${d.icon}</div>
-      <div class="fc-t num"><span class="hi">${deg(d.max)}</span><span class="sl">/</span><span class="lo">${deg(d.min)}</span></div>
+      <div class="fc-t num"><span class="lo">${deg(d.min)}</span><span class="sl">/</span><span class="hi">${deg(d.max)}</span></div>
       <div class="fc-p num">💧 ${d.prob === null ? '—' : Math.round(d.prob) + '%'}</div>
     </div>`).join('');
 }
