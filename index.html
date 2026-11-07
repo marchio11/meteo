@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Meteo Pesaro</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #0b0f14;
+    --tile: #141b24;
+    --tile-2: #1a2330;
+    --line: #243042;
+    --text: #eef3f8;
+    --muted: #8a9bb0;
+    --dim: #5b6b80;
+    --cold: #5ab0ff;
+    --hot: #ff7a59;
+    --ok: #3ddc97;
+    --warn: #ffb020;
+    --rain: #3d8bff;
+    --danger: #ff4d5e;
+    --gap: 1.4vh;
+    --radius: 1.6vh;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .app {
+    height: 100vh; height: 100dvh; display: grid;
+    grid-template-rows: auto 1fr; gap: var(--gap); padding: var(--gap);
+  }
+
+  /* ---------- header ---------- */
+  header { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 0 0.6vw; }
+  .place { font-size: 3.6vh; font-weight: 700; letter-spacing: .02em; }
+  .place small { font-size: 2.4vh; color: var(--muted); font-weight: 500; margin-left: .8vw; }
+  .hdr-right { display: flex; align-items: center; gap: 1.6vw; }
+  .date { font-size: 2.6vh; color: var(--muted); text-transform: capitalize; }
+  .clock { font-size: 4.6vh; font-weight: 700; }
+  .icon-btn {
+    background: var(--tile); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 1vh; font-size: 2.6vh; width: 5.4vh; height: 5.4vh; cursor: pointer;
+  }
+  .wl { width: 1.4vh; height: 1.4vh; border-radius: 50%; background: var(--dim); display: inline-block; }
+  .wl.on { background: var(--ok); }
+
+  /* ---------- main split ---------- */
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); min-height: 0; }
+
+  /* ---------- left: station ---------- */
+  .left { display: grid; grid-template-rows: auto 1fr; gap: var(--gap); min-height: 0; }
+  .notice {
+    display: none; align-items: center; gap: 1vw;
+    font-size: 2.2vh; color: var(--warn); background: rgba(255,176,32,.08);
+    border: 1px solid rgba(255,176,32,.25); border-radius: 1vh; padding: .9vh 1.2vw;
+  }
+  .notice.show { display: flex; }
+  .notice b { font-weight: 600; white-space: nowrap; }
+  .notice span { color: var(--muted); }
+  .tiles {
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1.3fr 1fr 1fr;
+    gap: var(--gap); min-height: 0;
+  }
+  .tile {
+    background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 1.8vh 1.6vw; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+    position: relative; transition: opacity .4s;
+  }
+  .tile.stale .val, .tile.stale .sub { opacity: .35; }
+  .label { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; }
+  .val { font-size: 9vh; font-weight: 700; line-height: 1; margin-top: auto; }
+  .val .u { font-size: .45em; color: var(--muted); font-weight: 500; margin-left: .15em; }
+  .sub { font-size: 2.7vh; color: var(--muted); margin-top: 1vh; line-height: 1.35; }
+  .sub b { color: var(--text); font-weight: 600; }
+
+  .t-temp { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 3vw; }
+  .t-temp .main { display: flex; flex-direction: column; height: 100%; flex: 1; }
+  .t-temp .val { font-size: 19vh; }
+  .minmax { display: flex; flex-direction: column; gap: 1.6vh; padding-right: 1vw; }
+  .mm { display: flex; align-items: baseline; gap: .8vw; font-size: 6vh; font-weight: 700; }
+  .mm .k { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; width: 4.5vw; font-weight: 600; }
+  .mm.min { color: var(--cold); }
+  .mm.max { color: var(--hot); }
+
+  .hum-bar { height: 1vh; background: var(--tile-2); border-radius: 1vh; margin-top: 1.4vh; overflow: hidden; }
+  .hum-bar i { display: block; height: 100%; width: 0; background: var(--cold); border-radius: 1vh; transition: width .6s; }
+
+  .wind-row { display: flex; align-items: flex-end; gap: 1.2vw; margin-top: auto; }
+  .wind-row .val { margin-top: 0; }
+  .arrow { width: 8vh; height: 8vh; flex: none; transition: transform .8s; }
+  .arrow.hidden { visibility: hidden; }
+
+  .t-upd .val { font-size: 8vh; }
+
+  /* ---------- right: radar + alerts ---------- */
+  .right { display: grid; grid-template-rows: 1.7fr 1fr; gap: var(--gap); min-height: 0; }
+  .radar { position: relative; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #0e141b; }
+  #map { position: absolute; inset: 0; background: #0e141b; }
+  .radar-info {
+    position: absolute; left: 1.2vh; top: 1.2vh; z-index: 800;
+    background: rgba(11,15,20,.78); border: 1px solid var(--line); border-radius: 1vh;
+    padding: .8vh 1vw; font-size: 2.3vh; display: flex; align-items: center; gap: .8vw;
+    pointer-events: none;
+  }
+  .radar-info .t { font-weight: 700; font-size: 2.8vh; }
+  .radar-info .lbl { color: var(--muted); }
+  .frames { position: absolute; left: 1.2vh; right: 1.2vh; bottom: 1.2vh; z-index: 800; display: flex; gap: .4vw; pointer-events: none; }
+  .frames i { flex: 1; height: .7vh; border-radius: .5vh; background: rgba(255,255,255,.18); }
+  .frames i.on { background: var(--text); }
+  .frames i.nc { background: rgba(61,139,255,.35); }
+  .frames i.nc.on { background: var(--rain); }
+  .leaflet-control-attribution { font-size: 1.3vh !important; background: rgba(11,15,20,.7) !important; color: var(--dim) !important; margin-bottom: 2.6vh !important; }
+  .leaflet-control-attribution a { color: var(--muted) !important; }
+
+  .alert {
+    border-radius: var(--radius); border: 1px solid var(--line); background: var(--tile);
+    padding: 2vh 1.8vw; display: flex; flex-direction: column; min-height: 0; transition: background .5s, border-color .5s;
+  }
+  .alert-top { display: flex; align-items: center; gap: 1.6vw; flex: 1; min-height: 0; }
+  .alert-icon { font-size: 9vh; line-height: 1; flex: none; }
+  .alert-title { font-size: min(6.2vh, 3.3vw); font-weight: 800; line-height: 1.05; }
+  .alert-sub { font-size: 2.6vh; color: var(--muted); margin-top: .8vh; }
+  .alert.none .alert-title { color: var(--ok); font-size: 5vh; }
+  .alert.later { border-color: rgba(61,139,255,.45); }
+  .alert.later .alert-title { font-size: 4.8vh; color: #9cc4ff; }
+  .alert.rain { background: linear-gradient(135deg, #1d4ed8, #3d8bff); border-color: #6ea8ff; }
+  .alert.rain.mod { background: linear-gradient(135deg, #b45309, #f59e0b); border-color: #fbbf24; }
+  .alert.rain.heavy { background: linear-gradient(135deg, #b91c1c, #ef4444); border-color: #f87171; }
+  .alert.rain .alert-sub, .alert.rain .bars span { color: rgba(255,255,255,.88); }
+  .alert.rain .alert-title { color: #fff; }
+  .alert.rain.pulse { animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { filter: brightness(1.18); } }
+  .alert.err .alert-title { font-size: 4vh; color: var(--muted); }
+
+  .bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: .6vw; height: 9vh; margin-top: 1.4vh; align-items: end; }
+  .bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: .5vh; }
+  .bar i { width: 100%; border-radius: .6vh .6vh 0 0; background: rgba(255,255,255,.12); min-height: .5vh; transition: height .5s; }
+  .bar i.wet { background: var(--rain); }
+  .alert.rain .bar i { background: rgba(255,255,255,.3); }
+  .alert.rain .bar i.wet { background: #fff; }
+  .bars span { font-size: 1.9vh; color: var(--muted); }
+
+  .credits { position: fixed; right: 1vw; bottom: .3vh; font-size: 1.3vh; color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="place">Pesaro <small id="stationName">Stazione Montelabbate</small></div>
+    <div class="hdr-right">
+      <span class="wl" id="wl" title="Schermo sempre acceso"></span>
+      <span class="date" id="date"></span>
+      <span class="clock num" id="clock">--:--</span>
+      <button class="icon-btn" id="fsBtn" title="Schermo intero" aria-label="Schermo intero">⛶</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===== METÀ SINISTRA: stazione ===== -->
+    <section class="left">
+      <div class="notice" id="notice"><b id="noticeTitle"></b><span id="noticeText"></span></div>
+      <div class="tiles">
+        <div class="tile t-temp" data-st>
+          <div class="main">
+            <div class="label">Temperatura</div>
+            <div class="val num" id="temp">—<span class="u">°C</span></div>
+          </div>
+          <div class="minmax">
+            <div class="mm max num"><span class="k">Max</span><span id="tmax">—</span></div>
+            <div class="mm min num"><span class="k">Min</span><span id="tmin">—</span></div>
+          </div>
+        </div>
+
+        <div class="tile" data-st>
+          <div class="label">Umidità</div>
+          <div class="val num" id="rh">—<span class="u">%</span></div>
+          <div class="hum-bar"><i id="rhBar"></i></div>
+        </div>
+
+        <div class="tile" data-st>
+          <div class="label">Pioggia oggi</div>
+          <div class="val num" id="rainDay">—<span class="u">mm</span></div>
+          <div class="sub">Ultima ora <b class="num" id="rainHour">—</b><br>Intensità <b class="num" id="rainRate">—</b></div>
+        </div>
+
+        <div class="tile" data-st>
+          <div class="label">Vento</div>
+          <div class="wind-row">
+            <svg class="arrow hidden" id="windArrow" viewBox="0 0 100 100" aria-hidden="true">
+              <circle cx="50" cy="50" r="46" fill="none" stroke="#243042" stroke-width="4"/>
+              <path d="M50 12 L68 62 L50 52 L32 62 Z" fill="#eef3f8"/>
+            </svg>
+            <div class="val num" id="wind">—<span class="u">km/h</span></div>
+          </div>
+          <div class="sub">Raffica <b class="num" id="gust">—</b> · da <b id="windDir">—</b></div>
+        </div>
+
+        <div class="tile t-upd">
+          <div class="label">Ultimo dato stazione</div>
+          <div class="val num" id="obsTime">—</div>
+          <div class="sub" id="obsAge">in attesa…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== METÀ DESTRA: radar + avvisi ===== -->
+    <section class="right">
+      <div class="radar">
+        <div id="map"></div>
+        <div class="radar-info"><span class="lbl">Radar</span><span class="t num" id="radarTime">--:--</span><span class="lbl" id="radarRel"></span></div>
+        <div class="frames" id="frames"></div>
+      </div>
+
+      <div class="alert none" id="alert">
+        <div class="alert-top">
+          <div class="alert-icon" id="alertIcon">☁️</div>
+          <div>
+            <div class="alert-title" id="alertTitle">Caricamento previsione…</div>
+            <div class="alert-sub" id="alertSub"></div>
+          </div>
+        </div>
+        <div class="bars" id="bars"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="credits">Dati: MeteoNetwork (CC-BY 4.0) · Open-Meteo · RainViewer · Esri</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* =====================================================================
+   CONFIGURAZIONE — modifica solo questa parte
+   ===================================================================== */
+const CONFIG = {
+  // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
+  // 'https://meteo-ponte.tuonome.workers.dev'
+  WORKER_URL: 'htpps://meteo-ponte.andrea-marchionni11.workers.dev',
+
+  STATION_LABEL: 'Stazione Montelabbate',
+  LAT: 43.8487,          // posizione di casa (per radar e previsione)
+  LON: 12.7888,
+
+  REFRESH_MIN: 10,       // ogni quanti minuti ricaricare i dati
+  STALE_MIN: 30,         // oltre quanti minuti un dato stazione è "vecchio"
+  RAIN_MM_15: 0.1,       // mm in 15 minuti oltre cui consideriamo "pioggia"
+  ALERT_WITHIN_MIN: 60,  // banner grande se la pioggia arriva entro…
+  RADAR_ZOOM: 8,
+};
+
+/* ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const DEMO = params.get('demo'); // ?demo=1  ?demo=stale  ?demo=rain  ?demo=off
+const pad = (n) => String(n).padStart(2, '0');
+const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const fmt = (n, dec = 1) => n === null ? '—' : n.toFixed(dec).replace('.', ',');
+const store = {
+  get(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+$('stationName').textContent = CONFIG.STATION_LABEL;
+
+/* ---------- orologio ---------- */
+function tickClock() {
+  const d = new Date();
+  $('clock').textContent = hhmm(d);
+  $('date').textContent = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/* =====================================================================
+   STAZIONE METEONETWORK (via ponte)
+   ===================================================================== */
+let station = null;     // ultimo dato ricevuto
+let stationError = null;
+
+const DIRS_IT = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+const EN2IT = { W: 'O', SW: 'SO', NW: 'NO', WSW: 'OSO', WNW: 'ONO', SSW: 'SSO', NNW: 'NNO' };
+function dirName(deg, card) {
+  if (deg !== null) return DIRS_IT[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+  if (!card) return '—';
+  return card.toUpperCase().split('').map(c => c === 'W' ? 'O' : c).join('');
+}
+function parseUtc(s) {
+  if (!s) return null;
+  const d = new Date(String(s).replace(' ', 'T') + 'Z');
+  return isNaN(d) ? null : d;
+}
+
+async function loadStation() {
+  try {
+    let d;
+    if (DEMO && DEMO !== 'off') d = demoStation();
+    else {
+      if (!CONFIG.WORKER_URL) throw new Error('ponte non ancora configurato (WORKER_URL)');
+      const r = await fetch(CONFIG.WORKER_URL + (CONFIG.WORKER_URL.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok || !j.data) throw new Error(j.error || `errore ${r.status}`);
+      d = j.data;
+    }
+    station = d;
+    stationError = null;
+    recordRain(d);
+  } catch (e) {
+    stationError = e.message || String(e);
+  }
+  renderStation();
+}
+
+/* Pioggia ultima ora: l'API dà solo "pioggia da mezzanotte".
+   Salvo le letture e sommo gli incrementi degli ultimi 60 minuti. */
+function recordRain(d) {
+  const t = parseUtc(d.observation_time_utc), r = num(d.daily_rain);
+  if (!t || r === null || (DEMO && DEMO !== 'off')) return;
+  let h = store.get('rainHist', []);
+  if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), r });
+  h = h.filter(x => x.t > t.getTime() - 3 * 3600e3).sort((a, b) => a.t - b.t);
+  store.set('rainHist', h);
+}
+function rainLastHour(obsMs) {
+  if (DEMO && DEMO !== 'off') return 0.4;
+  const h = store.get('rainHist', []).filter(x => x.t <= obsMs && x.t >= obsMs - 65 * 60e3);
+  if (h.length < 2 || h[0].t > obsMs - 45 * 60e3) return null; // storico insufficiente
+  let sum = 0;
+  for (let i = 1; i < h.length; i++) {
+    const inc = h[i].r - h[i - 1].r;
+    sum += inc >= 0 ? inc : h[i].r; // azzeramento a mezzanotte
+  }
+  return sum;
+}
+
+function setVal(id, text, unit) {
+  $(id).innerHTML = text + (unit ? `<span class="u">${unit}</span>` : '');
+}
+function showNotice(title, text) {
+  $('notice').classList.toggle('show', !!title);
+  $('noticeTitle').textContent = title || '';
+  $('noticeText').textContent = text || '';
+}
+function blankStation(stale) {
+  document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
+  setVal('temp', '—', '°C'); $('tmax').textContent = '—'; $('tmin').textContent = '—';
+  setVal('rh', '—', '%'); $('rhBar').style.width = '0';
+  setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
+  setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
+  $('windArrow').classList.add('hidden');
+}
+
+function renderStation() {
+  const d = station;
+  const obs = d ? parseUtc(d.observation_time_utc) : null;
+
+  if (obs) {
+    const age = Math.round((Date.now() - obs) / 60e3);
+    $('obsTime').textContent = hhmm(obs);
+    $('obsAge').textContent = age < 1 ? 'adesso' : age < 120 ? `${age} min fa` : `${Math.round(age / 60)} ore fa`;
+  } else {
+    $('obsTime').textContent = '—';
+    $('obsAge').textContent = stationError ? 'nessun dato' : 'in attesa…';
+  }
+
+  if (!d || !obs) {
+    blankStation();
+    showNotice('Dati stazione non disponibili', stationError ? '· ' + stationError : '');
+    return;
+  }
+  const ageMin = (Date.now() - obs) / 60e3;
+  if (ageMin > CONFIG.STALE_MIN) {
+    blankStation();
+    showNotice('Dati stazione non aggiornati', `· ultimo dato alle ${hhmm(obs)}, valori nascosti`);
+    return;
+  }
+  showNotice(stationError ? 'Aggiornamento non riuscito' : '', stationError ? '· mostro l’ultimo dato valido' : '');
+  document.querySelectorAll('[data-st]').forEach(t => t.classList.remove('stale'));
+
+  const T = num(d.temperature), tmin = num(d.current_tmin), tmax = num(d.current_tmax);
+  setVal('temp', fmt(T), '°C');
+  $('tmax').textContent = tmax === null ? '—' : fmt(tmax) + '°';
+  $('tmin').textContent = tmin === null ? '—' : fmt(tmin) + '°';
+
+  const rh = num(d.rh);
+  setVal('rh', rh === null ? '—' : Math.round(rh), '%');
+  $('rhBar').style.width = (rh === null ? 0 : Math.min(100, rh)) + '%';
+
+  const rd = num(d.daily_rain), rr = num(d.rain_rate), rlh = rainLastHour(obs.getTime());
+  setVal('rainDay', fmt(rd), 'mm');
+  $('rainHour').textContent = rlh === null ? 'in calcolo…' : fmt(rlh) + ' mm';
+  $('rainRate').textContent = rr === null ? '—' : fmt(rr) + ' mm/h';
+
+  const ws = num(d.wind_speed), wg = num(d.wind_gust), wd = num(d.wind_direction_degree);
+  setVal('wind', ws === null ? '—' : Math.round(ws), 'km/h');
+  $('gust').textContent = wg === null ? '—' : Math.round(wg) + ' km/h';
+  $('windDir').textContent = dirName(wd, d.wind_direction);
+  const arrow = $('windArrow');
+  if (wd !== null) { arrow.classList.remove('hidden'); arrow.style.transform = `rotate(${wd + 180}deg)`; }
+  else arrow.classList.add('hidden');
+}
+
+function demoStation() {
+  const ago = DEMO === 'stale' ? 140 : 4;
+  const t = new Date(Date.now() - ago * 60e3);
+  const iso = t.toISOString().slice(0, 19).replace('T', ' ');
+  return {
+    observation_time_utc: iso, temperature: '9.4', current_tmin: '7.1', current_tmax: '12.6',
+    rh: '82', daily_rain: '8.9', rain_rate: '1.0', wind_speed: '7.2', wind_gust: '19.3',
+    wind_direction_degree: '292', wind_direction: 'WNW',
+  };
+}
+
+/* =====================================================================
+   RADAR (RainViewer + Leaflet)
+   ===================================================================== */
+let map, radarLayers = [], radarFrames = [], frameIdx = 0, animTimer = null;
+
+function initMap() {
+  map = L.map('map', { zoomControl: false, attributionControl: true, fadeAnimation: false })
+    .setView([CONFIG.LAT, CONFIG.LON], CONFIG.RADAR_ZOOM);
+  map.attributionControl.setPrefix(false);
+  const esri = 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/';
+  L.tileLayer(esri + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 12, attribution: 'Mappa © Esri',
+  }).addTo(map);
+  map.createPane('labels');
+  map.getPane('labels').style.zIndex = 650;
+  map.getPane('labels').style.pointerEvents = 'none';
+  L.tileLayer(esri + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 12, pane: 'labels',
+  }).addTo(map);
+  L.circleMarker([CONFIG.LAT, CONFIG.LON], {
+    radius: 8, color: '#fff', weight: 3, fillColor: '#ff4d5e', fillOpacity: 1, pane: 'labels',
+  }).addTo(map);
+}
+
+async function loadRadar() {
+  try {
+    const r = await fetch('https://api.rainviewer.com/public/weather-maps.json', { cache: 'no-store' });
+    const j = await r.json();
+    const past = (j.radar && j.radar.past) || [];
+    const nowcast = ((j.radar && j.radar.nowcast) || []).map(f => ({ ...f, nc: true }));
+    const frames = past.slice(-12).concat(nowcast);
+    if (!frames.length) throw new Error('nessun frame');
+
+    radarLayers.forEach(l => map.removeLayer(l));
+    radarFrames = frames;
+    radarLayers = frames.map(f => L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+      opacity: 0, maxNativeZoom: 7, maxZoom: 12, zIndex: 10,
+      attribution: 'Radar <a href="https://www.rainviewer.com/">RainViewer</a>',
+    }).addTo(map));
+
+    $('frames').innerHTML = frames.map(f => `<i class="${f.nc ? 'nc' : ''}"></i>`).join('');
+    frameIdx = past.length ? Math.min(past.length, frames.length) - 1 : 0;
+    showFrame(frameIdx);
+    startAnim();
+  } catch (e) {
+    $('radarTime').textContent = 'n/d';
+    $('radarRel').textContent = 'radar non disponibile';
+  }
+}
+
+function showFrame(i) {
+  radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.8 : 0));
+  const f = radarFrames[i]; if (!f) return;
+  const t = new Date(f.time * 1000);
+  $('radarTime').textContent = hhmm(t);
+  const rel = Math.round((t - Date.now()) / 60e3);
+  $('radarRel').textContent = f.nc ? `previsione +${Math.max(0, rel)} min` : (i === radarFrames.filter(x => !x.nc).length - 1 ? 'ultimo' : `${-rel} min fa`);
+  [...$('frames').children].forEach((el, k) => el.classList.toggle('on', k === i));
+}
+
+function startAnim() {
+  clearTimeout(animTimer);
+  const step = () => {
+    frameIdx = (frameIdx + 1) % radarLayers.length;
+    showFrame(frameIdx);
+    const last = frameIdx === radarLayers.length - 1;
+    animTimer = setTimeout(step, last ? 2500 : 550);
+  };
+  animTimer = setTimeout(step, 1500);
+}
+
+/* =====================================================================
+   AVVISI PIOGGIA (Open-Meteo, dati a 15 minuti)
+   ===================================================================== */
+let slots = null, forecastError = null;
+
+async function loadForecast() {
+  try {
+    if (DEMO === 'rain') {
+      // finta pioggia che inizia tra ~25 minuti
+      const t0 = Date.now() - 5 * 60e3;
+      slots = [0, 0, 0.3, 0.8, 1.2, 0.5, 0.1].map((mm, i) => ({ start: t0 + i * 900e3, end: t0 + (i + 1) * 900e3, mm }));
+    } else {
+      const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
+        `&minutely_15=precipitation&past_minutely_15=1&forecast_minutely_15=8&timeformat=unixtime&timezone=auto`;
+      const r = await fetch(u, { cache: 'no-store' });
+      if (!r.ok) throw new Error('errore ' + r.status);
+      const j = await r.json();
+      const t = j.minutely_15.time, p = j.minutely_15.precipitation;
+      // Ogni valore è la pioggia dei 15 minuti PRECEDENTI all'orario indicato
+      slots = t.map((ts, i) => ({ end: ts * 1000, start: ts * 1000 - 900e3, mm: p[i] ?? 0 }));
+    }
+    forecastError = null;
+  } catch (e) {
+    forecastError = e.message || String(e);
+  }
+  renderAlert();
+}
+
+function renderAlert() {
+  const box = $('alert');
+  const setState = (cls, icon, title, sub) => {
+    box.className = 'alert ' + cls;
+    $('alertIcon').textContent = icon;
+    $('alertTitle').textContent = title;
+    $('alertSub').textContent = sub;
+  };
+
+  if (!slots) {
+    setState('err', '⚠️', 'Previsione non disponibile', forecastError ? 'Riprovo al prossimo aggiornamento' : '');
+    $('bars').innerHTML = '';
+    return;
+  }
+
+  const now = Date.now();
+  const next = slots.filter(s => s.end > now && s.start < now + 90 * 60e3).slice(0, 6);
+  const first = next.find(s => s.mm >= CONFIG.RAIN_MM_15);
+
+  const max = Math.max(1, ...next.map(s => s.mm));
+  $('bars').innerHTML = next.map(s => {
+    const wet = s.mm >= CONFIG.RAIN_MM_15;
+    const h = wet ? Math.max(12, (s.mm / max) * 100) : 4;
+    return `<div class="bar"><i class="${wet ? 'wet' : ''}" style="height:${h}%"></i><span class="num">${hhmm(new Date(Math.max(s.start, now)))}</span></div>`;
+  }).join('');
+
+  if (!first) {
+    setState('none', '🌤️', 'Nessuna pioggia prevista', 'nei prossimi 90 minuti' + (forecastError ? ' · (dato non aggiornato)' : ''));
+    return;
+  }
+
+  const mins = Math.max(0, Math.round((first.start - now) / 60e3));
+  const wetRun = [];
+  for (const s of next.slice(next.indexOf(first))) { if (s.mm >= CONFIG.RAIN_MM_15) wetRun.push(s); else break; }
+  const peakMmH = Math.max(...wetRun.map(s => s.mm)) * 4;
+  const total = next.reduce((a, s) => a + (s.mm >= CONFIG.RAIN_MM_15 ? s.mm : 0), 0);
+  const level = peakMmH >= 8 ? ['heavy', 'forte'] : peakMmH >= 2.5 ? ['mod', 'moderata'] : ['', 'debole'];
+  const until = hhmm(new Date(wetRun[wetRun.length - 1].end));
+  const sub = `Intensità ${level[1]} · fino alle ${until} circa · ${fmt(total)} mm previsti`;
+
+  if (mins <= CONFIG.ALERT_WITHIN_MIN) {
+    const title = mins <= 2 ? 'Pioggia in arrivo adesso' : `Pioggia tra ${mins} minuti`;
+    setState(`rain ${level[0]} ${mins <= 15 ? 'pulse' : ''}`, mins <= 2 ? '🌧️' : '☔', title, sub);
+  } else {
+    setState('later', '🌦️', `Possibile pioggia tra ${mins} minuti`, sub);
+  }
+}
+
+/* =====================================================================
+   SCHERMO SEMPRE ACCESO (Screen Wake Lock API) + schermo intero
+   ===================================================================== */
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) { $('wl').title = 'Wake Lock non supportato'; return; }
+  if (wakeLock && !wakeLock.released) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    $('wl').classList.add('on'); $('wl').title = 'Schermo sempre acceso: attivo';
+    wakeLock.addEventListener('release', () => { $('wl').classList.remove('on'); $('wl').title = 'Schermo sempre acceso: non attivo'; });
+  } catch (e) {
+    $('wl').classList.remove('on'); $('wl').title = 'Tocca lo schermo per tenerlo acceso';
+  }
+}
+document.addEventListener('pointerdown', requestWakeLock);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { requestWakeLock(); refreshAll(); }
+});
+
+$('fsBtn').addEventListener('click', async () => {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    } else await document.exitFullscreen();
+  } catch {}
+  setTimeout(() => map && map.invalidateSize(), 300);
+});
+window.addEventListener('resize', () => map && map.invalidateSize());
+
+/* =====================================================================
+   AVVIO E AGGIORNAMENTI
+   ===================================================================== */
+let lastRefresh = 0;
+function refreshAll() {
+  if (Date.now() - lastRefresh < 60e3) return; // evita doppie chiamate
+  lastRefresh = Date.now();
+  loadStation(); loadForecast(); loadRadar();
+}
+
+tickClock();
+setInterval(tickClock, 1000);
+initMap();
+refreshAll();
+setInterval(() => { lastRefresh = 0; refreshAll(); }, CONFIG.REFRESH_MIN * 60e3);
+setInterval(() => { renderStation(); renderAlert(); }, 30e3);   // età dati e "tra X minuti"
+setTimeout(() => location.reload(), 24 * 3600e3);              // ricarica completa 1 volta al giorno
+requestWakeLock();
+</script>
+</body>
+</html>
