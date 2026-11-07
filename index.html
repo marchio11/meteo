@@ -101,11 +101,16 @@
   .arrow { width: 8vh; height: 8vh; flex: none; transition: transform .8s; }
   .arrow.hidden { visibility: hidden; }
 
-  .sun-rows { margin-top: auto; display: flex; flex-direction: column; gap: 1.2vh; }
-  .sun-row { display: flex; align-items: center; gap: 1vw; }
-  .sun-ic { font-size: 5vh; line-height: 1; width: 6vh; text-align: center; }
-  .sun-k { font-size: 2.4vh; color: var(--muted); flex: 1; }
-  .sun-t { font-size: 5.6vh; font-weight: 700; line-height: 1; }
+  /* Griglia unica a 3 colonne (icona | scritta | orario): gli orari restano
+     allineati a destra qualunque sia la lunghezza di "Alba" o "Tramonto" */
+  .sun-rows {
+    margin-top: auto; display: grid; grid-template-columns: 6vh 1fr auto;
+    align-items: center; column-gap: 1vw; row-gap: 1.2vh; width: 100%;
+  }
+  .sun-row { display: contents; }
+  .sun-ic { font-size: 5vh; line-height: 1; text-align: center; }
+  .sun-k { font-size: 2.4vh; color: var(--muted); justify-self: start; }
+  .sun-t { font-size: 5.6vh; font-weight: 700; line-height: 1; justify-self: end; text-align: right; }
   .place .upd.old { color: var(--warn); }
 
   /* ---------- right: radar + alerts ---------- */
@@ -386,10 +391,20 @@ async function loadStation() {
   renderAlert(); // "Sta piovendo" dipende dai dati della stazione
 }
 
+/* La pioggia arriva da una stazione diversa (Montelabbate) con un suo orario.
+   rainObs = orario del dato pioggia; rainFresh = true se non è troppo vecchio. */
+function rainObs(d) {
+  return d ? parseUtc(d.rain_observation_time_utc || d.observation_time_utc) : null;
+}
+function rainFresh(d) {
+  const t = rainObs(d);
+  return !!t && (Date.now() - t) / 60e3 <= CONFIG.STALE_MIN;
+}
+
 /* Pioggia ultima ora: l'API dà solo "pioggia da mezzanotte".
    Salvo le letture e sommo gli incrementi degli ultimi 60 minuti. */
 function recordRain(d) {
-  const t = parseUtc(d.observation_time_utc), r = num(d.daily_rain);
+  const t = rainObs(d), r = num(d.daily_rain);
   if (!t || r === null || (DEMO && DEMO !== 'off')) return;
   let h = store.get('rainHist', []);
   if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), r });
@@ -423,8 +438,8 @@ function lastHourPending() {
    Restituisce { mmh, measured } oppure null. */
 function stationRainNow() {
   const d = station;
-  const obs = d ? parseUtc(d.observation_time_utc) : null;
-  if (!obs || (Date.now() - obs) / 60e3 > CONFIG.STALE_MIN) return null; // dato assente o vecchio
+  const obs = rainObs(d);
+  if (!rainFresh(d)) return null; // dato pioggia assente o vecchio
   const rr = num(d.rain_rate);
   if (rr !== null && rr > 0) return { mmh: rr, measured: true };
   if (DEMO && DEMO !== 'off') return null;
@@ -491,10 +506,13 @@ function renderStation() {
   setVal('rh', rh === null ? '—' : Math.round(rh), '%');
   $('rhBar').style.width = (rh === null ? 0 : Math.min(100, rh)) + '%';
 
-  const rd = num(d.daily_rain), rr = num(d.rain_rate), rlh = rainLastHour(obs.getTime());
+  // Pioggia: dalla stazione di Montelabbate, con il suo orario
+  const fresh = rainFresh(d);
+  const rd = fresh ? num(d.daily_rain) : null, rr = fresh ? num(d.rain_rate) : null;
+  const rlh = fresh ? rainLastHour(rainObs(d).getTime()) : null;
   const rainNA = rd === null && rr === null;
   $('rainDay').classList.toggle('na', rainNA);
-  if (rainNA) $('rainDay').textContent = 'Pluviometro non disponibile';
+  if (rainNA) $('rainDay').textContent = rainObs(d) && !fresh ? 'Dato pioggia non aggiornato' : 'Pluviometro non disponibile';
   else setVal('rainDay', fmt(rd), 'mm');
   $('rainHour').textContent = rd === null ? '—' : rlh === null ? lastHourPending() : fmt(rlh) + ' mm';
   $('rainRate').textContent = rr === null ? '—' : fmt(rr) + ' mm/h';
@@ -513,7 +531,7 @@ function demoStation() {
   const t = new Date(Date.now() - ago * 60e3);
   const iso = t.toISOString().slice(0, 19).replace('T', ' ');
   return {
-    observation_time_utc: iso, temperature: '9.4', current_tmin: '7.1', current_tmax: '12.6',
+    observation_time_utc: iso, rain_observation_time_utc: iso, temperature: '9.4', current_tmin: '7.1', current_tmax: '12.6',
     rh: '82', daily_rain: '8.9', rain_rate: DEMO === 'raining' ? '3.2' : '0.0', wind_speed: '7.2', wind_gust: '19.3',
     wind_direction_degree: '292', wind_direction: 'WNW',
   };
@@ -799,8 +817,7 @@ function renderAlert() {
 // La stazione è aggiornata e non sta piovendo?
 function stationDryNow() {
   const d = station;
-  const obs = d ? parseUtc(d.observation_time_utc) : null;
-  if (!obs || (Date.now() - obs) / 60e3 > CONFIG.STALE_MIN) return false;
+  if (!rainFresh(d)) return false;
   return num(d.rain_rate) === 0 && !stationRainNow();
 }
 
