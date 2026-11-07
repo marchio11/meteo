@@ -201,7 +201,7 @@
           </div>
         </div>
 
-        <div class="tile" data-st>
+        <div class="tile">
           <div class="label">Umidità</div>
           <div class="val num" id="rh">—<span class="u">%</span></div>
           <div class="hum-bar"><i id="rhBar"></i></div>
@@ -467,7 +467,6 @@ function showNotice(title, text) {
 function blankStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
   setVal('temp', '—', '°C'); $('tmax').textContent = '—'; $('tmin').textContent = '—';
-  setVal('rh', '—', '%'); $('rhBar').style.width = '0';
   $('rainDay').classList.remove('na');
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
   setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
@@ -502,9 +501,6 @@ function renderStation() {
   $('tmax').textContent = tmax === null ? '—' : fmt(tmax) + '°';
   $('tmin').textContent = tmin === null ? '—' : fmt(tmin) + '°';
 
-  const rh = num(d.rh);
-  setVal('rh', rh === null ? '—' : Math.round(rh), '%');
-  $('rhBar').style.width = (rh === null ? 0 : Math.min(100, rh)) + '%';
 
   // Pioggia: dalla stazione di Montelabbate, con il suo orario
   const fresh = rainFresh(d);
@@ -697,28 +693,42 @@ async function forecastVisualCrossing() {
   const today = new Date(), tomorrow = new Date(Date.now() + 864e5);
   const u = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/' +
     `${CONFIG.LAT},${CONFIG.LON}/${ymd(today)}/${ymd(tomorrow)}` +
-    '?unitGroup=metric&include=hours&elements=datetimeEpoch,precip,precipprob&contentType=json';
+    '?unitGroup=metric&include=hours,current&elements=datetimeEpoch,precip,precipprob,humidity&contentType=json';
   const r = await fetch(u, { cache: 'no-store' });
   if (!r.ok) throw new Error('Visual Crossing errore ' + r.status);
   const j = await r.json();
   const hours = (j.days || []).flatMap(d => d.hours || []);
   if (!hours.length) throw new Error('Visual Crossing senza dati');
   // L'orario indicato è l'inizio dell'ora (come sul sito Visual Crossing)
-  return hours.map(h => ({
+  const slots = hours.map(h => ({
     start: h.datetimeEpoch * 1000, end: h.datetimeEpoch * 1000 + 3600e3,
     mm: h.precip ?? 0, prob: h.precipprob ?? null,
   }));
+  // Umidità attuale: media delle stazioni vicine calcolata da Visual Crossing
+  const rh = j.currentConditions ? num(j.currentConditions.humidity) : null;
+  return { slots, rh };
 }
 
 // Riserva: Open-Meteo orario (il valore è la pioggia dell'ora PRECEDENTE all'orario)
 async function forecastOpenMeteo() {
   const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
-    '&hourly=precipitation,precipitation_probability&past_hours=2&forecast_hours=12&timeformat=unixtime&timezone=auto';
+    '&hourly=precipitation,precipitation_probability&current=relative_humidity_2m' +
+    '&past_hours=2&forecast_hours=12&timeformat=unixtime&timezone=auto';
   const r = await fetch(u, { cache: 'no-store' });
   if (!r.ok) throw new Error('Open-Meteo errore ' + r.status);
   const j = await r.json();
   const t = j.hourly.time, p = j.hourly.precipitation, pr = j.hourly.precipitation_probability || [];
-  return t.map((ts, i) => ({ start: ts * 1000 - 3600e3, end: ts * 1000, mm: p[i] ?? 0, prob: pr[i] ?? null }));
+  const slots = t.map((ts, i) => ({ start: ts * 1000 - 3600e3, end: ts * 1000, mm: p[i] ?? 0, prob: pr[i] ?? null }));
+  const rh = j.current ? num(j.current.relative_humidity_2m) : null;
+  return { slots, rh };
+}
+
+/* Umidità: non dalla stazione ma da Visual Crossing (riserva Open-Meteo),
+   aggiornata insieme alla previsione */
+let areaRh = null;
+function renderHumidity() {
+  setVal('rh', areaRh === null ? '—' : Math.round(areaRh), '%');
+  $('rhBar').style.width = (areaRh === null ? 0 : Math.min(100, areaRh)) + '%';
 }
 
 async function loadForecast() {
@@ -728,20 +738,25 @@ async function loadForecast() {
       const h0 = Math.floor(Date.now() / 3600e3) * 3600e3;
       slots = [0, 1.2, 2.8, 0.9, 0.2, 0, 0].map((mm, i) => ({ start: h0 + i * 3600e3, end: h0 + (i + 1) * 3600e3, mm, prob: mm ? 90 : 5 }));
       forecastSource = 'demo';
+      areaRh = 94;
     } else {
+      let res;
       try {
-        slots = await forecastVisualCrossing();
+        res = await forecastVisualCrossing();
         forecastSource = 'Visual Crossing';
       } catch (e) {
         console.warn('Visual Crossing non disponibile, uso Open-Meteo:', e.message);
-        slots = await forecastOpenMeteo();
+        res = await forecastOpenMeteo();
         forecastSource = 'Open-Meteo';
       }
+      slots = res.slots;
+      areaRh = res.rh;
     }
     forecastError = null;
   } catch (e) {
     forecastError = e.message || String(e);
   }
+  renderHumidity();
   renderAlert();
 }
 
