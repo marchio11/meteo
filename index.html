@@ -101,7 +101,12 @@
   .arrow { width: 8vh; height: 8vh; flex: none; transition: transform .8s; }
   .arrow.hidden { visibility: hidden; }
 
-  .t-upd .val { font-size: 8vh; }
+  .sun-rows { margin-top: auto; display: flex; flex-direction: column; gap: 1.2vh; }
+  .sun-row { display: flex; align-items: center; gap: 1vw; }
+  .sun-ic { font-size: 5vh; line-height: 1; width: 6vh; text-align: center; }
+  .sun-k { font-size: 2.4vh; color: var(--muted); flex: 1; }
+  .sun-t { font-size: 5.6vh; font-weight: 700; line-height: 1; }
+  .place .upd.old { color: var(--warn); }
 
   /* ---------- right: radar + alerts ---------- */
   .right { display: grid; grid-template-rows: 1.7fr 1fr; gap: var(--gap); min-height: 0; }
@@ -153,6 +158,8 @@
   .alert.rain .bar i { background: rgba(255,255,255,.3); }
   .alert.rain .bar i.wet { background: #fff; }
   .bars span { font-size: 1.9vh; color: var(--muted); }
+  .bars em { font-style: normal; font-size: 1.6vh; color: var(--muted); min-height: 1.9vh; }
+  .alert.rain .bars em { color: rgba(255,255,255,.85); }
   .bar.obs span { font-weight: 700; color: var(--text); }
   .bar.fc i.wet { opacity: .55; }                /* previsione: più chiara della misura */
   .bars-note { font-size: 1.7vh; color: var(--dim); margin-top: .6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -164,7 +171,7 @@
 <body>
 <div class="app">
   <header>
-    <div class="place">Pesaro <small id="stationName">Stazione Montelabbate</small></div>
+    <div class="place">Pesaro <small><span id="placeName">Villa Ceccolini</span> – <span class="upd" id="updText">in attesa dei dati…</span></small></div>
     <div class="hdr-right">
       <span class="wl" id="wl" title="Schermo sempre acceso"></span>
       <span class="date" id="date"></span>
@@ -213,10 +220,13 @@
           <div class="sub">Raffica <b class="num" id="gust">—</b> · da <b id="windDir">—</b></div>
         </div>
 
-        <div class="tile t-upd">
-          <div class="label">Ultimo dato stazione</div>
-          <div class="val num" id="obsTime">—</div>
-          <div class="sub" id="obsAge">in attesa…</div>
+        <div class="tile t-sun">
+          <div class="label">Alba e tramonto</div>
+          <div class="sun-rows">
+            <div class="sun-row"><span class="sun-ic" aria-hidden="true">☀️</span><span class="sun-k">Alba</span><span class="sun-t num" id="sunrise">—</span></div>
+            <div class="sun-row"><span class="sun-ic" aria-hidden="true">🌙</span><span class="sun-k">Tramonto</span><span class="sun-t num" id="sunset">—</span></div>
+          </div>
+          <div class="sub" id="dayLen"></div>
         </div>
       </div>
     </section>
@@ -243,7 +253,7 @@
     </section>
   </main>
 </div>
-<div class="credits">Dati: MeteoNetwork (CC-BY 4.0) · Open-Meteo · Radar-DPC, Dipartimento della Protezione Civile (CC BY-SA 4.0) · RainViewer · Esri</div>
+<div class="credits">Dati: MeteoNetwork (CC-BY 4.0) · Visual Crossing · Open-Meteo · Radar-DPC, Dipartimento della Protezione Civile (CC BY-SA 4.0) · RainViewer · Esri</div>
 
 <!-- Filtro colori per il radar DPC -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -276,13 +286,13 @@ const CONFIG = {
   // 'https://meteo-ponte.tuonome.workers.dev'
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',
 
-  STATION_LABEL: 'Stazione Montelabbate',
+  PLACE_LABEL: '- Villa Ceccolini',  // nome mostrato in alto accanto a "Pesaro"
   LAT: 43.86655146106417,  // posizione di casa (segnalino, centro radar, previsione)
   LON: 12.839180387625616,
 
   REFRESH_MIN: 10,       // ogni quanti minuti ricaricare i dati
   STALE_MIN: 30,         // oltre quanti minuti un dato stazione è "vecchio"
-  RAIN_MM_15: 0.1,       // mm in 15 minuti oltre cui consideriamo "pioggia"
+  RAIN_MM_H: 0.1,        // mm in un'ora oltre cui (se probabile) consideriamo "pioggia"
   ALERT_WITHIN_MIN: 60,  // banner grande se la pioggia arriva entro…
   RADAR_ZOOM: 8,
   FORECAST_BARS: true,   // false = nasconde le barre dei prossimi 90 minuti
@@ -301,13 +311,40 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
-$('stationName').textContent = CONFIG.STATION_LABEL;
+$('placeName').textContent = CONFIG.PLACE_LABEL;
 
 /* ---------- orologio ---------- */
 function tickClock() {
   const d = new Date();
   $('clock').textContent = hhmm(d);
   $('date').textContent = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/* ---------- alba e tramonto (calcolo astronomico, nessun servizio esterno) ---------- */
+function sunTimes(date, lat, lon) {
+  const rad = Math.PI / 180, J1970 = 2440588, J2000 = 2451545;
+  const d = date.valueOf() / 864e5 - 0.5 + J1970 - J2000;       // giorni dal 2000
+  const lw = -lon * rad, phi = lat * rad;
+  const n = Math.round(d - 0.0009 - lw / (2 * Math.PI));
+  const ds = 0.0009 + lw / (2 * Math.PI) + n;
+  const M = rad * (357.5291 + 0.98560028 * ds);                 // anomalia media
+  const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+  const L = M + C + rad * 102.9372 + Math.PI;                   // longitudine eclittica
+  const dec = Math.asin(Math.sin(L) * Math.sin(rad * 23.4397)); // declinazione
+  const noon = J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const w = Math.acos((Math.sin(-0.833 * rad) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec)));
+  const set = J2000 + 0.0009 + (w + lw) / (2 * Math.PI) + n + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const rise = noon - (set - noon);
+  const toDate = (j) => new Date((j + 0.5 - J1970) * 864e5);
+  return { rise: toDate(rise), set: toDate(set) };
+}
+function renderSun() {
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const { rise, set } = sunTimes(today, CONFIG.LAT, CONFIG.LON);
+  $('sunrise').textContent = hhmm(rise);
+  $('sunset').textContent = hhmm(set);
+  const mins = Math.round((set - rise) / 60e3);
+  $('dayLen').textContent = `Luce: ${Math.floor(mins / 60)} h ${pad(mins % 60)} min`;
 }
 
 /* =====================================================================
@@ -426,14 +463,10 @@ function renderStation() {
   const d = station;
   const obs = d ? parseUtc(d.observation_time_utc) : null;
 
-  if (obs) {
-    const age = Math.round((Date.now() - obs) / 60e3);
-    $('obsTime').textContent = hhmm(obs);
-    $('obsAge').textContent = age < 1 ? 'adesso' : age < 120 ? `${age} min fa` : `${Math.round(age / 60)} ore fa`;
-  } else {
-    $('obsTime').textContent = '—';
-    $('obsAge').textContent = stationError ? 'nessun dato' : 'in attesa…';
-  }
+  // Orario dell'ultimo dato della stazione, in alto accanto a "Pesaro"
+  const upd = $('updText');
+  upd.textContent = obs ? `Dati aggiornati alle ${hhmm(obs)}` : stationError ? 'dati non disponibili' : 'in attesa dei dati…';
+  upd.classList.toggle('old', !obs || (Date.now() - obs) / 60e3 > CONFIG.STALE_MIN);
 
   if (!d || !obs) {
     blankStation();
@@ -634,36 +667,57 @@ function startAnim() {
 }
 
 /* =====================================================================
-   AVVISI PIOGGIA (Open-Meteo, dati a 15 minuti)
+   AVVISI PIOGGIA (previsione oraria Visual Crossing, riserva Open-Meteo)
    ===================================================================== */
-let slots = null, forecastError = null, forecastModel = 'Open-Meteo';
+// slots = ore di previsione: { start, end (ms), mm (mm nell'ora), prob (% o null) }
+let slots = null, forecastError = null, forecastSource = 'Visual Crossing';
+
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+// Visual Crossing: gratuito senza chiave, dati orari per le coordinate di casa
+async function forecastVisualCrossing() {
+  const today = new Date(), tomorrow = new Date(Date.now() + 864e5);
+  const u = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/' +
+    `${CONFIG.LAT},${CONFIG.LON}/${ymd(today)}/${ymd(tomorrow)}` +
+    '?unitGroup=metric&include=hours&elements=datetimeEpoch,precip,precipprob&contentType=json';
+  const r = await fetch(u, { cache: 'no-store' });
+  if (!r.ok) throw new Error('Visual Crossing errore ' + r.status);
+  const j = await r.json();
+  const hours = (j.days || []).flatMap(d => d.hours || []);
+  if (!hours.length) throw new Error('Visual Crossing senza dati');
+  // L'orario indicato è l'inizio dell'ora (come sul sito Visual Crossing)
+  return hours.map(h => ({
+    start: h.datetimeEpoch * 1000, end: h.datetimeEpoch * 1000 + 3600e3,
+    mm: h.precip ?? 0, prob: h.precipprob ?? null,
+  }));
+}
+
+// Riserva: Open-Meteo orario (il valore è la pioggia dell'ora PRECEDENTE all'orario)
+async function forecastOpenMeteo() {
+  const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
+    '&hourly=precipitation,precipitation_probability&past_hours=2&forecast_hours=12&timeformat=unixtime&timezone=auto';
+  const r = await fetch(u, { cache: 'no-store' });
+  if (!r.ok) throw new Error('Open-Meteo errore ' + r.status);
+  const j = await r.json();
+  const t = j.hourly.time, p = j.hourly.precipitation, pr = j.hourly.precipitation_probability || [];
+  return t.map((ts, i) => ({ start: ts * 1000 - 3600e3, end: ts * 1000, mm: p[i] ?? 0, prob: pr[i] ?? null }));
+}
 
 async function loadForecast() {
   try {
     if (DEMO === 'rain') {
-      // finta pioggia che inizia tra ~25 minuti
-      const t0 = Date.now() - 5 * 60e3;
-      slots = [0, 0, 0.3, 0.8, 1.2, 0.5, 0.1].map((mm, i) => ({ start: t0 + i * 900e3, end: t0 + (i + 1) * 900e3, mm }));
+      // finta pioggia a partire dalla prossima ora
+      const h0 = Math.floor(Date.now() / 3600e3) * 3600e3;
+      slots = [0, 1.2, 2.8, 0.9, 0.2, 0, 0].map((mm, i) => ({ start: h0 + i * 3600e3, end: h0 + (i + 1) * 3600e3, mm, prob: mm ? 90 : 5 }));
+      forecastSource = 'demo';
     } else {
-      // ICON-D2 (servizio meteo tedesco DWD) copre Pesaro con dati nativi a 15 minuti;
-      // se non risponde uso la scelta automatica di Open-Meteo.
-      slots = null;
-      for (const model of ['icon_d2', 'best_match']) {
-        try {
-          const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
-            `&minutely_15=precipitation&past_minutely_15=1&forecast_minutely_15=8&timeformat=unixtime&timezone=auto&models=${model}`;
-          const r = await fetch(u, { cache: 'no-store' });
-          if (!r.ok) throw new Error('errore ' + r.status);
-          const j = await r.json();
-          const t = j.minutely_15.time, p = j.minutely_15.precipitation;
-          if (!p || p.every(v => v === null)) throw new Error('nessun dato');
-          // Ogni valore è la pioggia dei 15 minuti PRECEDENTI all'orario indicato
-          slots = t.map((ts, i) => ({ end: ts * 1000, start: ts * 1000 - 900e3, mm: p[i] ?? 0 }));
-          forecastModel = model === 'icon_d2' ? 'ICON-D2' : 'Open-Meteo';
-          break;
-        } catch (e) {
-          if (model === 'best_match') throw e;
-        }
+      try {
+        slots = await forecastVisualCrossing();
+        forecastSource = 'Visual Crossing';
+      } catch (e) {
+        console.warn('Visual Crossing non disponibile, uso Open-Meteo:', e.message);
+        slots = await forecastOpenMeteo();
+        forecastSource = 'Open-Meteo';
       }
     }
     forecastError = null;
@@ -671,6 +725,11 @@ async function loadForecast() {
     forecastError = e.message || String(e);
   }
   renderAlert();
+}
+
+// Un'ora è "di pioggia" se i mm sono significativi, o se sono pochi ma probabili
+function isWetHour(s) {
+  return s.mm >= 0.3 || (s.mm >= CONFIG.RAIN_MM_H && (s.prob === null || s.prob >= 40));
 }
 
 function renderAlert() {
@@ -683,27 +742,34 @@ function renderAlert() {
   };
 
   const now = Date.now();
-  const isWet = (s) => s.mm >= CONFIG.RAIN_MM_15;
-  const next = slots ? slots.filter(s => s.end > now && s.start < now + 90 * 60e3).slice(0, 6) : [];
-  const first = next.find(isWet);
+  const future = slots ? slots.filter(s => s.end > now) : [];           // ora in corso + successive
+  const next = future.filter(s => s.start < now + 90 * 60e3);           // prossimi 90 minuti
+  const first = next.find(isWetHour);
+  // ore di pioggia consecutive a partire dalla prima (anche oltre i 90 minuti, per "fino alle…")
   const wetRun = [];
-  if (first) for (const s of next.slice(next.indexOf(first))) { if (isWet(s)) wetRun.push(s); else break; }
+  if (first) for (const s of future.slice(future.indexOf(first))) { if (isWetHour(s)) wetRun.push(s); else break; }
   const until = wetRun.length ? hhmm(new Date(wetRun[wetRun.length - 1].end)) : null;
 
   const raining = stationRainNow();   // { mmh } se la stazione misura pioggia adesso
   const dryNow = stationDryNow();     // true se la stazione è aggiornata e non piove
-  renderBars(next, now, raining, dryNow);
+  renderBars(future, now, raining, dryNow);
 
   // 1) La stazione segna pioggia in corso: ha la precedenza sulle previsioni
   if (raining) {
     const lv = rainLevel(raining.mmh);
     let sub = `Intensità ${lv[1]} · ${raining.measured ? '' : 'circa '}${fmt(raining.mmh)} mm/h (stazione)`;
-    if (until && first.start <= now + 15 * 60e3) sub += ` · prevista fino alle ${until} circa`;
+    // durata: ore di pioggia consecutive a partire dall'ora in corso o dalla successiva
+    const startIdx = future.slice(0, 2).findIndex(isWetHour);
+    if (startIdx >= 0) {
+      let end = null;
+      for (const s of future.slice(startIdx)) { if (isWetHour(s)) end = s.end; else break; }
+      sub += ` · prevista fino alle ${hhmm(new Date(end))} circa`;
+    }
     setState(`rain ${lv[0]}`, '🌧️', 'Sta piovendo', sub);
     return;
   }
 
-  // 2) Altrimenti uso le previsioni di Open-Meteo
+  // 2) Altrimenti uso la previsione oraria
   if (!slots) {
     if (forecastError) setState('err', '⚠️', 'Previsione non disponibile', 'Riprovo al prossimo aggiornamento');
     else setState('none', '☁️', 'Caricamento previsione…', '');
@@ -716,14 +782,14 @@ function renderAlert() {
   }
 
   const mins = Math.max(0, Math.round((first.start - now) / 60e3));
-  const peakMmH = Math.max(...wetRun.map(s => s.mm)) * 4;
-  const total = next.reduce((a, s) => a + (isWet(s) ? s.mm : 0), 0);
+  const peakMmH = Math.max(...wetRun.map(s => s.mm));
   const level = rainLevel(peakMmH);
-  const sub = `Intensità ${level[1]} · fino alle ${until} circa · ${fmt(total)} mm previsti`;
+  const prob = Math.max(...wetRun.map(s => s.prob ?? 0));
+  const sub = `Intensità ${level[1]} · fino alle ${until} circa` + (prob ? ` · probabilità ${Math.round(prob)}%` : '');
 
   if (mins <= CONFIG.ALERT_WITHIN_MIN) {
-    // Se il modello dice "adesso" ma la stazione non misura pioggia, resto prudente
-    const title = mins <= 2 ? (dryNow ? 'Possibile pioggia a breve' : 'Pioggia in arrivo adesso') : `Pioggia tra ${mins} minuti`;
+    // Se la previsione dice "adesso" ma la stazione non misura pioggia, resto prudente
+    const title = mins <= 2 ? (dryNow ? 'Possibile pioggia a breve' : 'Pioggia prevista adesso') : `Pioggia tra ${mins} minuti`;
     setState(`rain ${level[0]} ${mins <= 15 ? 'pulse' : ''}`, mins <= 2 ? '🌧️' : '☔', title, sub);
   } else {
     setState('later', '🌦️', `Possibile pioggia tra ${mins} minuti`, sub);
@@ -738,35 +804,37 @@ function stationDryNow() {
   return num(d.rain_rate) === 0 && !stationRainNow();
 }
 
-/* Riepilogo dei prossimi 90 minuti.
+/* Riepilogo delle prossime ore.
    Prima barra "Ora" = pioggia MISURATA dalla stazione; le altre = previsione
-   del modello (più chiare). Sotto, una nota dice se le due cose concordano. */
-function renderBars(next, now, raining, dryNow) {
+   oraria a partire dalla prossima ora intera (più chiare), con la probabilità.
+   Sotto, una nota dice se misura e previsione concordano. */
+function renderBars(future, now, raining, dryNow) {
   if (!CONFIG.FORECAST_BARS || !slots) {
     $('bars').innerHTML = '';
     $('barsNote').textContent = '';
     return;
   }
-  const mmh = (s) => s.mm * 4; // mm in 15 minuti → mm/h
-  const isWet = (s) => s.mm >= CONFIG.RAIN_MM_15;
+  const current = future.find(s => s.start <= now);          // ora in corso
+  const hours = future.filter(s => s.start > now).slice(0, 5); // prossime 5 ore intere
   const obsMmh = raining ? raining.mmh : dryNow ? 0 : null;
-  const max = Math.max(2, obsMmh || 0, ...next.map(mmh));
+  const max = Math.max(2, obsMmh || 0, ...hours.map(s => s.mm));
   const height = (v, wet) => (wet ? Math.max(12, Math.min(100, (v / max) * 100)) : 4);
 
-  let html = '';
-  if (obsMmh !== null) {
-    html += `<div class="bar obs"><i class="${raining ? 'wet' : ''}" style="height:${height(obsMmh, !!raining)}%"></i><span>Ora</span></div>`;
-  }
-  html += next.slice(0, obsMmh !== null ? 5 : 6).map(s =>
-    `<div class="bar fc"><i class="${isWet(s) ? 'wet' : ''}" style="height:${height(mmh(s), isWet(s))}%"></i><span class="num">${hhmm(new Date(Math.max(s.start, now)))}</span></div>`
-  ).join('');
+  let html = `<div class="bar obs"><em></em><i class="${raining ? 'wet' : ''}" style="height:${obsMmh === null ? 4 : height(obsMmh, !!raining)}%"></i><span>Ora</span></div>`;
+  html += hours.map(s => {
+    const wet = isWetHour(s);
+    const p = s.prob === null || s.mm <= 0 ? '' : `${Math.round(s.prob)}%`; // probabilità solo se c'è pioggia prevista
+    return `<div class="bar fc"><em class="num">${p}</em><i class="${wet ? 'wet' : ''}" style="height:${height(s.mm, wet)}%"></i><span class="num">${hhmm(new Date(s.start))}</span></div>`;
+  }).join('');
   $('bars').innerHTML = html;
 
-  // Coerenza tra misura e previsione nei prossimi 30 minuti
-  const soonWet = next.slice(0, 2).some(isWet);
-  let note = `Previsione indicativa · modello ${forecastModel}`;
-  if (raining && !soonWet) note = `⚠ Il modello ${forecastModel} non vede la pioggia in corso: previsione poco affidabile`;
-  else if (dryNow && next.length && isWet(next[0]) && next[0].start <= now) note = `⚠ Il modello prevede pioggia ora ma la stazione non la misura: previsione indicativa`;
+  // Coerenza tra misura (adesso) e previsione per l'ora in corso
+  let note = `Previsione oraria indicativa · ${forecastSource}`;
+  if (raining && current && !isWetHour(current) && !(hours[0] && isWetHour(hours[0]))) {
+    note = `⚠ ${forecastSource} non prevede la pioggia in corso: previsione poco affidabile`;
+  } else if (dryNow && current && isWetHour(current) && (current.prob ?? 100) >= 70) {
+    note = '⚠ Prevista pioggia in quest\'ora ma la stazione non la misura: previsione indicativa';
+  }
   $('barsNote').textContent = note;
 }
 
@@ -817,7 +885,8 @@ initMap();
 refreshAll();
 setInterval(() => { lastRefresh = 0; refreshAll(); }, CONFIG.REFRESH_MIN * 60e3);
 setInterval(loadRadar, RADAR_REFRESH_MIN * 60e3);              // il radar DPC si aggiorna ogni 5 minuti
-setInterval(() => { renderStation(); renderAlert(); }, 30e3);   // età dati e "tra X minuti"
+setInterval(() => { renderStation(); renderAlert(); renderSun(); }, 30e3);   // età dati, "tra X minuti", alba/tramonto
+renderSun();
 setTimeout(() => location.reload(), 24 * 3600e3);              // ricarica completa 1 volta al giorno
 requestWakeLock();
 </script>
