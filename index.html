@@ -201,7 +201,7 @@
           </div>
         </div>
 
-        <div class="tile">
+        <div class="tile" data-st>
           <div class="label">Umidità</div>
           <div class="val num" id="rh">—<span class="u">%</span></div>
           <div class="hum-bar"><i id="rhBar"></i></div>
@@ -402,14 +402,19 @@ function rainFresh(d) {
 }
 
 /* Pioggia ultima ora: l'API dà solo "pioggia da mezzanotte".
-   Salvo le letture e sommo gli incrementi degli ultimi 60 minuti. */
+   Salvo le letture e sommo gli incrementi degli ultimi 60 minuti.
+   Lo storico è separato per stazione: cambiando stazione riparte da zero. */
+try { localStorage.removeItem('rainHist'); } catch {} // vecchio storico (Montelabbate), non più usato
+function histKey() {
+  return 'rainHist_' + ((station && station.rain_station_code) || 'staz');
+}
 function recordRain(d) {
   const t = rainObs(d), r = num(d.daily_rain);
   if (!t || r === null || (DEMO && DEMO !== 'off')) return;
-  let h = store.get('rainHist', []);
+  let h = store.get(histKey(), []);
   if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), r });
   h = h.filter(x => x.t > t.getTime() - 3 * 3600e3).sort((a, b) => a.t - b.t);
-  store.set('rainHist', h);
+  store.set(histKey(), h);
 }
 function sumIncrements(h) {
   let sum = 0;
@@ -421,13 +426,13 @@ function sumIncrements(h) {
 }
 function rainLastHour(obsMs) {
   if (DEMO && DEMO !== 'off') return 0.4;
-  const h = store.get('rainHist', []).filter(x => x.t <= obsMs && x.t >= obsMs - 65 * 60e3);
+  const h = store.get(histKey(), []).filter(x => x.t <= obsMs && x.t >= obsMs - 65 * 60e3);
   if (h.length < 2 || h[0].t > obsMs - 45 * 60e3) return null; // storico insufficiente
   return sumIncrements(h);
 }
 // Testo mostrato finché non ho abbastanza letture per l'ultima ora
 function lastHourPending() {
-  const h = store.get('rainHist', []);
+  const h = store.get(histKey(), []);
   if (!h.length) return 'in calcolo…';
   const ready = new Date(h[0].t + 45 * 60e3);
   return ready > Date.now() ? `dalle ${hhmm(ready)}` : 'in calcolo…';
@@ -443,7 +448,7 @@ function stationRainNow() {
   const rr = num(d.rain_rate);
   if (rr !== null && rr > 0) return { mmh: rr, measured: true };
   if (DEMO && DEMO !== 'off') return null;
-  const h = store.get('rainHist', []).filter(x => x.t <= obs.getTime() && x.t >= obs.getTime() - 20 * 60e3);
+  const h = store.get(histKey(), []).filter(x => x.t <= obs.getTime() && x.t >= obs.getTime() - 20 * 60e3);
   if (h.length < 2) return null;
   const mm = sumIncrements(h);
   const hours = (h[h.length - 1].t - h[0].t) / 3600e3;
@@ -467,6 +472,7 @@ function showNotice(title, text) {
 function blankStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
   setVal('temp', '—', '°C'); $('tmax').textContent = '—'; $('tmin').textContent = '—';
+  setVal('rh', '—', '%'); $('rhBar').style.width = '0';
   $('rainDay').classList.remove('na');
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
   setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
@@ -500,6 +506,10 @@ function renderStation() {
   setVal('temp', fmt(T), '°C');
   $('tmax').textContent = tmax === null ? '—' : fmt(tmax) + '°';
   $('tmin').textContent = tmin === null ? '—' : fmt(tmin) + '°';
+
+  const rh = num(d.rh);
+  setVal('rh', rh === null ? '—' : Math.round(rh), '%');
+  $('rhBar').style.width = (rh === null ? 0 : Math.min(100, rh)) + '%';
 
 
   // Pioggia: dalla stazione di Montelabbate, con il suo orario
@@ -693,42 +703,28 @@ async function forecastVisualCrossing() {
   const today = new Date(), tomorrow = new Date(Date.now() + 864e5);
   const u = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/' +
     `${CONFIG.LAT},${CONFIG.LON}/${ymd(today)}/${ymd(tomorrow)}` +
-    '?unitGroup=metric&include=hours,current&elements=datetimeEpoch,precip,precipprob,humidity&contentType=json';
+    '?unitGroup=metric&include=hours&elements=datetimeEpoch,precip,precipprob&contentType=json';
   const r = await fetch(u, { cache: 'no-store' });
   if (!r.ok) throw new Error('Visual Crossing errore ' + r.status);
   const j = await r.json();
   const hours = (j.days || []).flatMap(d => d.hours || []);
   if (!hours.length) throw new Error('Visual Crossing senza dati');
   // L'orario indicato è l'inizio dell'ora (come sul sito Visual Crossing)
-  const slots = hours.map(h => ({
+  return hours.map(h => ({
     start: h.datetimeEpoch * 1000, end: h.datetimeEpoch * 1000 + 3600e3,
     mm: h.precip ?? 0, prob: h.precipprob ?? null,
   }));
-  // Umidità attuale: media delle stazioni vicine calcolata da Visual Crossing
-  const rh = j.currentConditions ? num(j.currentConditions.humidity) : null;
-  return { slots, rh };
 }
 
 // Riserva: Open-Meteo orario (il valore è la pioggia dell'ora PRECEDENTE all'orario)
 async function forecastOpenMeteo() {
   const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
-    '&hourly=precipitation,precipitation_probability&current=relative_humidity_2m' +
-    '&past_hours=2&forecast_hours=12&timeformat=unixtime&timezone=auto';
+    '&hourly=precipitation,precipitation_probability&past_hours=2&forecast_hours=12&timeformat=unixtime&timezone=auto';
   const r = await fetch(u, { cache: 'no-store' });
   if (!r.ok) throw new Error('Open-Meteo errore ' + r.status);
   const j = await r.json();
   const t = j.hourly.time, p = j.hourly.precipitation, pr = j.hourly.precipitation_probability || [];
-  const slots = t.map((ts, i) => ({ start: ts * 1000 - 3600e3, end: ts * 1000, mm: p[i] ?? 0, prob: pr[i] ?? null }));
-  const rh = j.current ? num(j.current.relative_humidity_2m) : null;
-  return { slots, rh };
-}
-
-/* Umidità: non dalla stazione ma da Visual Crossing (riserva Open-Meteo),
-   aggiornata insieme alla previsione */
-let areaRh = null;
-function renderHumidity() {
-  setVal('rh', areaRh === null ? '—' : Math.round(areaRh), '%');
-  $('rhBar').style.width = (areaRh === null ? 0 : Math.min(100, areaRh)) + '%';
+  return t.map((ts, i) => ({ start: ts * 1000 - 3600e3, end: ts * 1000, mm: p[i] ?? 0, prob: pr[i] ?? null }));
 }
 
 async function loadForecast() {
@@ -738,25 +734,20 @@ async function loadForecast() {
       const h0 = Math.floor(Date.now() / 3600e3) * 3600e3;
       slots = [0, 1.2, 2.8, 0.9, 0.2, 0, 0].map((mm, i) => ({ start: h0 + i * 3600e3, end: h0 + (i + 1) * 3600e3, mm, prob: mm ? 90 : 5 }));
       forecastSource = 'demo';
-      areaRh = 94;
     } else {
-      let res;
       try {
-        res = await forecastVisualCrossing();
+        slots = await forecastVisualCrossing();
         forecastSource = 'Visual Crossing';
       } catch (e) {
         console.warn('Visual Crossing non disponibile, uso Open-Meteo:', e.message);
-        res = await forecastOpenMeteo();
+        slots = await forecastOpenMeteo();
         forecastSource = 'Open-Meteo';
       }
-      slots = res.slots;
-      areaRh = res.rh;
     }
     forecastError = null;
   } catch (e) {
     forecastError = e.message || String(e);
   }
-  renderHumidity();
   renderAlert();
 }
 
