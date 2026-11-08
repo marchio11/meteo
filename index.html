@@ -381,6 +381,10 @@
 /* =====================================================================
    CONFIGURAZIONE — modifica solo questa parte
    ===================================================================== */
+// Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
+// si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
+const APP_VERSION = '2026-11-08.5';
+
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
   // 'https://meteo-ponte.tuonome.workers.dev'
@@ -1215,6 +1219,25 @@ setInterval(loadRadar, RADAR_REFRESH_MIN * 60e3);              // il radar DPC s
 setInterval(() => { renderStation(); renderAlert(); renderSun(); }, 30e3);   // età dati, "tra X minuti", alba/tramonto
 renderSun();
 setTimeout(() => location.reload(), 24 * 3600e3);              // ricarica completa 1 volta al giorno
+
+/* Aggiornamento automatico: ogni 15 minuti scarico la pagina pubblicata (senza cache)
+   e confronto APP_VERSION. Se è cambiata, ricarico con ?v=<nuova versione>: un indirizzo
+   nuovo che il browser non ha in cache, così arriva davvero la versione aggiornata. */
+const UPDATE_CHECK_MIN = 15;
+async function checkForUpdate() {
+  if (location.protocol === 'file:' || (DEMO && DEMO !== 'off')) return;
+  try {
+    const r = await fetch(location.pathname + '?check=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const m = (await r.text()).match(/const APP_VERSION = '([^']+)'/);
+    if (!m || m[1] === APP_VERSION) return;
+    const q = new URLSearchParams(location.search);
+    q.set('v', m[1]);
+    location.replace(location.pathname + '?' + q);
+  } catch { /* rete assente: riprovo al prossimo giro */ }
+}
+setInterval(checkForUpdate, UPDATE_CHECK_MIN * 60e3);
+setTimeout(checkForUpdate, 60e3);                              // primo controllo un minuto dopo l'avvio
 requestWakeLock();
 </script>
 </body>

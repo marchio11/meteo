@@ -97,6 +97,7 @@ La vecchia variabile `STATION` non è più usata.
 
 - **`index.html`, manifest, icone:** caricarli nel repository `marchio11/meteo` (o fare commit sul ramo `main`). GitHub Pages pubblica in 1-2 minuti.
 - **`worker.js`:** su Cloudflare → Worker → **Edit code** → incollare → **Deploy**. Dopo il Deploy aspettare 2-3 minuti prima di aprire la dashboard (vedi limiti MeteoNetwork).
+- **Aggiornamento automatico del tablet:** in cima allo script c'è `APP_VERSION` (es. `'2026-11-08.5'`). **Va cambiata a ogni modifica di `index.html`**: la dashboard ogni 15 minuti scarica la pagina pubblicata, e se la versione è diversa si ricarica da sola con `?v=<versione>` nell'indirizzo. Se non la si cambia, il tablet si aggiorna comunque, ma solo con la ricarica giornaliera o riaprendo l'app.
 - **Cache:** GitHub Pages fa tenere la pagina in cache fino a 10 minuti. Sul PC: Ctrl+F5. Sul tablet: chiudere e riaprire l'app, oppure aprire una volta `https://marchio11.github.io/meteo/?v=N` in Chrome. La dashboard comunque si ricarica da sola una volta al giorno.
 
 ### Prove senza dati reali
