@@ -99,6 +99,7 @@
   /* Vento nel riquadro stretto: freccia più piccola */
   .t-third .wind-row { gap: .7vw; }
   .t-third .arrow { width: 6.4vh; height: 6.4vh; }
+  .t-third .val.calm { font-size: 5.2vh; }   /* "Calma" è più larga di un numero */
 
   /* Pressione: valore + freccia della tendenza (verde su, rossa giù, grigia stabile)
      + mini grafico a barre delle ultime 24 ore */
@@ -383,7 +384,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-08.5';
+const APP_VERSION = '2026-11-08.6';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -405,7 +406,7 @@ const CONFIG = {
 /* ===================================================================== */
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const DEMO = params.get('demo'); // ?demo=1  ?demo=stale  ?demo=rain  ?demo=raining  ?demo=off
+const DEMO = params.get('demo'); // ?demo=1  ?demo=stale  ?demo=rain  ?demo=raining  ?demo=calm  ?demo=off
 const pad = (n) => String(n).padStart(2, '0');
 const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
@@ -573,7 +574,7 @@ function blankStation() {
   setVal('rh', '—', '%'); $('rhBar').style.width = '0';
   $('rainDay').classList.remove('na');
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
-  setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
+  setVal('wind', '—', 'km/h'); $('wind').classList.remove('calm'); $('gust').textContent = '—'; $('windDir').textContent = '—';
   $('windArrow').classList.add('hidden');
   setVal('press', '—', 'hPa'); $('pressArrow').className.baseVal = 'p-arrow hidden'; $('pressTrend').textContent = '';
   renderPressBars(null, null, 'flat');
@@ -624,11 +625,15 @@ function renderStation() {
   $('rainRate').textContent = rr === null ? '—' : fmt(rr) + ' mm/h';
 
   const ws = num(d.wind_speed), wg = num(d.wind_gust), wd = num(d.wind_direction_degree);
-  setVal('wind', ws === null ? '—' : Math.round(ws), 'km/h');
+  // La stazione mrc065 non invia la velocità quando l'anemometro è fermo: campo vuoto = calma
+  const calm = ws === null;
+  if (calm) setVal('wind', 'Calma'); else setVal('wind', Math.round(ws), 'km/h');
+  $('wind').classList.toggle('calm', calm);
+  $('windArrow').style.display = calm ? 'none' : '';   // con la calma la freccia non serve: lascio tutto lo spazio alla scritta
   $('gust').textContent = wg === null ? '—' : Math.round(wg) + ' km/h';
   $('windDir').textContent = dirName(wd, d.wind_direction);
   const arrow = $('windArrow');
-  if (wd !== null) { arrow.classList.remove('hidden'); arrow.style.transform = `rotate(${wd + 180}deg)`; }
+  if (wd !== null && !calm) { arrow.classList.remove('hidden'); arrow.style.transform = `rotate(${wd + 180}deg)`; }
   else arrow.classList.add('hidden');
 
   renderPressure(d, obs);
@@ -737,7 +742,7 @@ function demoStation() {
   const iso = t.toISOString().slice(0, 19).replace('T', ' ');
   return {
     observation_time_utc: iso, rain_observation_time_utc: iso, temperature: '9.4', current_tmin: '7.1', current_tmax: '12.6',
-    rh: '82', daily_rain: '8.9', rain_rate: DEMO === 'raining' ? '3.2' : '0.0', wind_speed: '7.2', wind_gust: '19.3',
+    rh: '82', daily_rain: '8.9', rain_rate: DEMO === 'raining' ? '3.2' : '0.0', wind_speed: DEMO === 'calm' ? null : '7.2', wind_gust: '19.3',
     wind_direction_degree: '292', wind_direction: 'WNW', smlp: DEMO === 'raining' ? '1006.3' : '1018.6',
   };
 }

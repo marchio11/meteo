@@ -102,7 +102,7 @@ La vecchia variabile `STATION` non è più usata.
 
 ### Prove senza dati reali
 Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecchio),
-`?demo=rain` (pioggia prevista tra poco), `?demo=raining` (sta piovendo), `?demo=off`.
+`?demo=rain` (pioggia prevista tra poco), `?demo=raining` (sta piovendo), `?demo=calm` (vento calmo), `?demo=off`.
 
 ---
 
@@ -114,6 +114,8 @@ Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecch
   - `mrc029` Montelabbate: sensori di temperatura/umidità/vento bloccati (es. 9,4 °C e 82% fissi tutto il giorno, vento 0); funzionava solo il pluviometro;
   - `mrc085` Villa Fastiggi: il proprietario non permette la distribuzione via API ("the weather station license does not allow the distribution of weather data"). Non leggere i dati dal sito web aggirando questa scelta.
 - **Previsione oraria da Visual Crossing:** Open-Meteo a 15 minuti (ICON-D2) e altri modelli davano risultati in contrasto con la pioggia reale. Nessuna fonte gratuita offre un nowcast radar per l'Italia (il nowcast di RainViewer è vuoto, il DPC non lo pubblica). Le barre sono quindi orarie, non a 30 minuti: le mezz'ore di Visual Crossing sono a pagamento.
+- **Vento "Calma":** quando l'anemometro è fermo, la stazione `mrc065` invia la velocità vuota (`wind_speed: null`, non 0). La stazione è affidabile, quindi campo vuoto = calma: la pagina scrive "Calma" (carattere un po' più piccolo dei numeri) e nasconde la freccia. Prova: `?demo=calm`.
+- **"Raffica" = raffica massima di oggi:** il campo `wind_gust` di MeteoNetwork coincide con `current_wgustmax`, quindi resta fisso per ore. Si è provato a scrivere "Raffica max", ma nel riquadro stretto non ci sta bene (sul tablet riduce tutto il riquadro): si lascia "Raffica".
 - **"Sta piovendo" ha la precedenza sulle previsioni:** si attiva se la stazione (dato non vecchio) segna intensità > 0 o se la pioggia di oggi è aumentata negli ultimi 20 minuti.
 - **Pioggia ultima ora:** l'API dà solo il totale da mezzanotte; la pagina salva le letture nel browser (`localStorage`, chiave `rainHist_<stazione>`) e somma gli incrementi. Serve ~45 minuti di pagina aperta prima che compaia; ogni dispositivo ha il suo storico.
 - **Tendenza della pressione:** l'API dà solo il valore attuale (`smlp`, pressione al livello del mare; il Worker la inoltra già, non serve modificarlo). La pagina salva le letture nel browser (`localStorage`, chiave `pressHist_<stazione>`) e confronta il valore attuale con quello di circa 3 ore prima. Serve almeno 1 ora di pagina aperta prima che compaia la freccia (prima si legge "tendenza dalle HH:MM"). Lo storico copre 25 ore e alimenta anche le barre: ogni barra usa la lettura più vicina a quell'ora (entro 40 minuti); se manca, la barra resta appena accennata e senza valore. Le barre si riempiono quindi man mano, del tutto dopo 24 ore di pagina aperta; ogni dispositivo ha il suo storico. Scala delle barre: dal minimo al massimo con almeno 6 hPa di escursione, così le piccole oscillazioni restano piccole. Variazioni sotto 0,5 hPa = "stabile". Costanti `PRESS_SPAN_MIN`, `PRESS_MIN_SPAN`, `PRESS_STEADY`, `PRESS_BARS_H` nello script.
