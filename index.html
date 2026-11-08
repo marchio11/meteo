@@ -69,7 +69,9 @@
   .notice b { font-weight: 600; white-space: nowrap; }
   .notice span { color: var(--muted); }
   .tiles {
-    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1.3fr 1fr 1fr auto;
+    /* 6 colonne: temperatura e alba/tramonto su tutta la riga, umidità/pioggia/pressione
+       2 colonne ciascuno, vento e prossimi giorni 3 colonne ciascuno */
+    display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: 1.3fr 1fr 1fr auto;
     gap: var(--gap); min-height: 0; flex: 1;
   }
   .tile {
@@ -86,6 +88,21 @@
   .sub b { color: var(--text); font-weight: 600; }
 
   .t-temp { grid-column: 1 / -1; }
+  .t-third { grid-column: span 2; padding-left: 1.1vw; padding-right: 1.1vw; }
+  .t-half { grid-column: span 3; }
+  .t-third .val { font-size: 7.4vh; }
+  .t-third .sub { font-size: 2.3vh; }
+
+  /* Pressione: valore + freccia della tendenza (verde su, rossa giù, grigia stabile) */
+  .press-row { display: flex; align-items: center; justify-content: center; gap: 1vw; margin-top: auto; }
+  .t-third .press-row .val { margin-top: 0; white-space: nowrap; font-size: 6.6vh; }
+  .p-arrow { width: 5.2vh; height: 5.2vh; flex: none; transition: transform .6s; }
+  .p-arrow.hidden { visibility: hidden; }
+  .p-arrow.up { color: var(--ok); }
+  .p-arrow.down { color: var(--danger); transform: rotate(180deg); }
+  .p-arrow.flat { color: var(--dim); transform: rotate(90deg); }
+  .sub .up { color: var(--ok); }
+  .sub .down { color: var(--danger); }
   .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 3vw; min-height: 0; }
   .t-temp .val { font-size: 19vh; margin-top: 0; }
   .minmax { display: flex; flex-direction: column; gap: 1.6vh; padding-right: 1vw; }
@@ -228,19 +245,30 @@
           </div>
         </div>
 
-        <div class="tile" data-st>
+        <div class="tile t-third" data-st>
           <div class="label">Umidità</div>
           <div class="val num" id="rh">—<span class="u">%</span></div>
           <div class="hum-bar"><i id="rhBar"></i></div>
         </div>
 
-        <div class="tile" data-st>
+        <div class="tile t-third" data-st>
           <div class="label">Pioggia oggi</div>
           <div class="val num" id="rainDay">—<span class="u">mm</span></div>
           <div class="sub">Ultima ora <b class="num" id="rainHour">—</b><br>Intensità <b class="num" id="rainRate">—</b></div>
         </div>
 
-        <div class="tile" data-st>
+        <div class="tile t-third" data-st>
+          <div class="label">Pressione</div>
+          <div class="press-row">
+            <div class="val num" id="press">—</div>
+            <svg class="p-arrow hidden" id="pressArrow" viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="sub" id="pressTrend">&nbsp;</div>
+        </div>
+
+        <div class="tile t-half" data-st>
           <div class="label">Vento</div>
           <div class="wind-row">
             <svg class="arrow hidden" id="windArrow" viewBox="0 0 100 100" aria-hidden="true">
@@ -252,7 +280,7 @@
           <div class="sub">Raffica <b class="num" id="gust">—</b> · da <b id="windDir">—</b></div>
         </div>
 
-        <div class="tile t-fc">
+        <div class="tile t-half t-fc">
           <div class="label">Prossimi giorni</div>
           <div class="fc-days" id="fcDays">
             <div class="fc-day"><div class="fc-name">—</div></div>
@@ -427,6 +455,7 @@ async function loadStation() {
     station = d;
     stationError = null;
     recordRain(d);
+    recordPressure(d);
   } catch (e) {
     stationError = e.message || String(e);
   }
@@ -520,6 +549,7 @@ function blankStation() {
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
   setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
   $('windArrow').classList.add('hidden');
+  setVal('press', '—'); $('pressArrow').className.baseVal = 'p-arrow hidden'; $('pressTrend').innerHTML = '&nbsp;';
 }
 
 function renderStation() {
@@ -573,6 +603,67 @@ function renderStation() {
   const arrow = $('windArrow');
   if (wd !== null) { arrow.classList.remove('hidden'); arrow.style.transform = `rotate(${wd + 180}deg)`; }
   else arrow.classList.add('hidden');
+
+  renderPressure(d, obs);
+}
+
+/* =====================================================================
+   PRESSIONE (stessa stazione, campo smlp = pressione al livello del mare)
+   L'API dà solo il valore attuale: per la tendenza la pagina salva le letture
+   nel browser (chiave pressHist_<stazione>) e confronta il valore attuale con
+   quello di circa 3 ore prima (servono almeno 60 minuti di letture).
+   ===================================================================== */
+const PRESS_SPAN_MIN = 180;   // confronto con la lettura di ~3 ore fa
+const PRESS_MIN_SPAN = 60;    // minimo di storico per mostrare una tendenza
+const PRESS_STEADY = 0.5;     // variazioni più piccole (hPa) = "stabile"
+function pressValue(d) {
+  return d ? num(d.smlp ?? d.mslp ?? d.pressure) : null;
+}
+function pressKey() {
+  return 'pressHist_' + ((station && station.station_code) || 'staz');
+}
+function recordPressure(d) {
+  const t = parseUtc(d.observation_time_utc), p = pressValue(d);
+  if (!t || p === null || (DEMO && DEMO !== 'off')) return;
+  let h = store.get(pressKey(), []);
+  if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), p });
+  h = h.filter(x => x.t > t.getTime() - 4 * 3600e3).sort((a, b) => a.t - b.t);
+  store.set(pressKey(), h);
+}
+// Restituisce { diff, min } (variazione in hPa e minuti trascorsi) oppure { pending: Date|null }
+function pressTrend(obsMs, p) {
+  if (DEMO && DEMO !== 'off') return { diff: DEMO === 'raining' ? -1.8 : 1.2, min: 180 };
+  const h = store.get(pressKey(), []).filter(x => x.t <= obsMs);
+  if (!h.length) return { pending: null };
+  // lettura più vicina a 3 ore prima (ma non più vecchia di 3 ore e mezza)
+  const target = obsMs - PRESS_SPAN_MIN * 60e3;
+  const cand = h.filter(x => x.t >= target - 30 * 60e3);
+  if (!cand.length) return { pending: null };
+  const ref = cand.reduce((a, b) => Math.abs(b.t - target) < Math.abs(a.t - target) ? b : a);
+  const min = (obsMs - ref.t) / 60e3;
+  if (min < PRESS_MIN_SPAN) return { pending: new Date(ref.t + PRESS_MIN_SPAN * 60e3) };
+  return { diff: p - ref.p, min };
+}
+function renderPressure(d, obs) {
+  const p = pressValue(d), arrow = $('pressArrow'), sub = $('pressTrend');
+  if (p === null) {
+    setVal('press', '—'); arrow.className.baseVal = 'p-arrow hidden'; sub.textContent = 'hPa · non disponibile';
+    return;
+  }
+  setVal('press', Math.round(p));
+  const tr = pressTrend(obs.getTime(), p);
+  if (tr.diff === undefined) {
+    arrow.className.baseVal = 'p-arrow hidden';
+    sub.innerHTML = `hPa · tendenza ${tr.pending && tr.pending > Date.now() ? 'dalle <b class="num">' + hhmm(tr.pending) + '</b>' : 'in calcolo…'}`;
+    return;
+  }
+  const dir = tr.diff >= PRESS_STEADY ? 'up' : tr.diff <= -PRESS_STEADY ? 'down' : 'flat';
+  arrow.className.baseVal = 'p-arrow ' + dir;
+  const hours = Math.max(1, Math.round(tr.min / 60));
+  const sign = tr.diff > 0 ? '+' : tr.diff < 0 ? '−' : '±';
+  sub.innerHTML = dir === 'flat'
+    ? `hPa · <b>stabile</b>`
+    : `<b class="num ${dir}">${sign}${fmt(Math.abs(tr.diff))} hPa</b> in ${hours} ${hours === 1 ? 'ora' : 'ore'}`;
 }
 
 function demoStation() {
@@ -582,7 +673,7 @@ function demoStation() {
   return {
     observation_time_utc: iso, rain_observation_time_utc: iso, temperature: '9.4', current_tmin: '7.1', current_tmax: '12.6',
     rh: '82', daily_rain: '8.9', rain_rate: DEMO === 'raining' ? '3.2' : '0.0', wind_speed: '7.2', wind_gust: '19.3',
-    wind_direction_degree: '292', wind_direction: 'WNW',
+    wind_direction_degree: '292', wind_direction: 'WNW', smlp: DEMO === 'raining' ? '1006.3' : '1018.6',
   };
 }
 

@@ -33,10 +33,10 @@ dato della stazione, arancione se più vecchio di 30 min); a destra pallino verd
 (schermo sempre acceso attivo), data, orologio, pulsante **ⓘ** (fonti dei dati, si
 chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 
-**Metà sinistra** (griglia a 2 colonne; tutti i titoli dei riquadri centrati):
+**Metà sinistra** (griglia a 6 colonne; tutti i titoli dei riquadri centrati):
 
 1. Temperatura attuale con massima e minima del giorno (tutta la larghezza)
-2. Umidità | Pioggia oggi (con ultima ora e intensità)
+2. Umidità | Pioggia oggi (con ultima ora e intensità) | Pressione (hPa, freccia verde ↑ in aumento, rossa ↓ in diminuzione, grigia ↔ stabile, e variazione "+1,2 hPa in 3 ore") — un terzo di larghezza ciascuno
 3. Vento (velocità, raffica, direzione con freccia) | Prossimi giorni (domani e dopodomani: sigla DOM/LUN…, icona, **minima / massima**, 💧 probabilità di pioggia)
 4. Striscia alba/tramonto: ☀️ Alba a sinistra, 🌙 Tramonto a destra, senza separatori
 
@@ -53,7 +53,7 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 
 | Dato | Fonte | Note |
 |---|---|---|
-| Temperatura, min/max, umidità, vento, pioggia | **MeteoNetwork, stazione `mrc065` Celletta/Pentagono (Pesaro)**, tramite il Worker | ~3-4 km da casa. Licenza CC BY 4.0. |
+| Temperatura, min/max, umidità, vento, pioggia, pressione | **MeteoNetwork, stazione `mrc065` Celletta/Pentagono (Pesaro)**, tramite il Worker | ~3-4 km da casa. Licenza CC BY 4.0. |
 | Barre orarie pioggia, "Pioggia tra X minuti", "fino alle…" | **Visual Crossing** (gratis, senza chiave) | Solo dati orari nel piano gratuito. |
 | Previsione prossimi 2 giorni | **Visual Crossing** (stessa richiesta delle barre) | Icona, tempmin, tempmax, precipprob. |
 | Riserva se Visual Crossing non risponde | **Open-Meteo** | Orario + giornaliero. CC BY 4.0. |
@@ -115,6 +115,7 @@ Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecch
 - **Previsione oraria da Visual Crossing:** Open-Meteo a 15 minuti (ICON-D2) e altri modelli davano risultati in contrasto con la pioggia reale. Nessuna fonte gratuita offre un nowcast radar per l'Italia (il nowcast di RainViewer è vuoto, il DPC non lo pubblica). Le barre sono quindi orarie, non a 30 minuti: le mezz'ore di Visual Crossing sono a pagamento.
 - **"Sta piovendo" ha la precedenza sulle previsioni:** si attiva se la stazione (dato non vecchio) segna intensità > 0 o se la pioggia di oggi è aumentata negli ultimi 20 minuti.
 - **Pioggia ultima ora:** l'API dà solo il totale da mezzanotte; la pagina salva le letture nel browser (`localStorage`, chiave `rainHist_<stazione>`) e somma gli incrementi. Serve ~45 minuti di pagina aperta prima che compaia; ogni dispositivo ha il suo storico.
+- **Tendenza della pressione:** l'API dà solo il valore attuale (`smlp`, pressione al livello del mare; il Worker la inoltra già, non serve modificarlo). La pagina salva le letture nel browser (`localStorage`, chiave `pressHist_<stazione>`) e confronta il valore attuale con quello di circa 3 ore prima. Serve almeno 1 ora di pagina aperta prima che compaia la freccia (prima si legge "tendenza dalle HH:MM"). Variazioni sotto 0,5 hPa = "stabile". Costanti `PRESS_SPAN_MIN`, `PRESS_MIN_SPAN`, `PRESS_STEADY` nello script.
 - **Radar DPC ricolorato:** lo stile ufficiale disegna la pioggia debole quasi trasparente; un filtro SVG (`#dpcColor`) la ricolora (azzurro → blu → verde → giallo → rosso → viola, scala indicativa). Si parte dall'istante precedente all'ultimo annunciato perché l'ultimo a volte non è ancora pronto (immagine vuota).
 - **Mappa Esri** invece di CARTO: le tile CARTO ora mostrano "API KEY REQUIRED".
 
