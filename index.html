@@ -80,11 +80,14 @@
     position: relative; transition: opacity .4s;
   }
   .tile.stale .val, .tile.stale .sub { opacity: .35; }
+  /* Adattamento automatico: se il contenuto di un riquadro non ci sta (schermo più
+     piccolo, carattere più largo, numeri lunghi) fitTiles() abbassa --k per quel riquadro */
+  .tile > :not(.label) { zoom: var(--k, 1); }
   .label { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; text-align: center; }
-  .val.na { font-size: 3.6vh; color: var(--dim); font-weight: 500; }
-  .val { font-size: 9vh; font-weight: 700; line-height: 1; margin-top: auto; }
+  .val.na { font-size: 3.6vh; color: var(--dim); font-weight: 500; white-space: normal; }
+  .val { font-size: 9vh; font-weight: 700; line-height: 1; margin-top: auto; white-space: nowrap; }
   .val .u { font-size: .45em; color: var(--muted); font-weight: 500; margin-left: .15em; }
-  .sub { font-size: 2.7vh; color: var(--muted); margin-top: 1vh; line-height: 1.35; }
+  .sub { font-size: 2.7vh; color: var(--muted); margin-top: 1vh; line-height: 1.35; white-space: nowrap; }
   .sub b { color: var(--text); font-weight: 600; }
 
   .t-temp { grid-column: 1 / -1; }
@@ -1160,7 +1163,38 @@ $('fsBtn').addEventListener('click', async () => {
   } catch {}
   setTimeout(() => map && map.invalidateSize(), 300);
 });
-window.addEventListener('resize', () => map && map.invalidateSize());
+window.addEventListener('resize', () => { map && map.invalidateSize(); fitSoon(); });
+
+/* =====================================================================
+   ADATTAMENTO DEI RIQUADRI
+   Su alcuni schermi (es. il tablet) il carattere è più largo e un valore lungo
+   può uscire dal riquadro. Dopo ogni aggiornamento controllo ogni riquadro e,
+   se qualcosa sborda, rimpicciolisco il suo contenuto a passi del 5% (minimo 55%).
+   ===================================================================== */
+function tileOverflows(t) {
+  const r = t.getBoundingClientRect(), m = 3;
+  for (const e of t.querySelectorAll('*')) {
+    const q = e.getBoundingClientRect();
+    if (!q.width && !q.height) continue;
+    if (q.right > r.right - m || q.left < r.left + m || q.bottom > r.bottom - m || q.top < r.top) return true;
+  }
+  return false;
+}
+function fitTiles() {
+  document.querySelectorAll('.tiles .tile').forEach(t => {
+    let k = 1;
+    t.style.setProperty('--k', '1');
+    while (k > 0.56 && tileOverflows(t)) { k -= 0.05; t.style.setProperty('--k', k.toFixed(2)); }
+  });
+}
+let fitPending = false;
+function fitSoon() {
+  if (fitPending) return;
+  fitPending = true;
+  requestAnimationFrame(() => { fitPending = false; fitTiles(); });
+}
+new MutationObserver(fitSoon).observe(document.querySelector('.tiles'), { childList: true, subtree: true, characterData: true });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
 
 /* =====================================================================
    AVVIO E AGGIORNAMENTI

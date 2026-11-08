@@ -126,6 +126,7 @@ Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecch
 - **Cache del Worker su `*.workers.dev`:** `caches.default` lì non funziona, quindi ogni richiesta arrivava a MeteoNetwork e si superava il limite (5 richieste/minuto, max 1 al secondo). Ora il Worker tiene la risposta in memoria per 5 minuti e non chiama MeteoNetwork più di una volta al minuto; in caso di errore restituisce l'ultimo dato valido.
 - **Spazio vuoto in basso a sinistra:** con l'avviso arancione nascosto, i riquadri finivano in una riga ad altezza automatica. Ora `.left` è una colonna flex e `.tiles` ha `flex: 1`.
 - **Storico pioggia mescolato tra stazioni:** ora la chiave dipende dalla stazione.
+- **Testo tagliato nei riquadri sul tablet:** sul Lenovo il carattere è più largo e il valore del vento andava a capo, spingendo fuori la riga "Da NO". Ora valori e righe secondarie non vanno mai a capo (`white-space: nowrap`) e la funzione `fitTiles()` controlla ogni riquadro dopo ogni aggiornamento: se qualcosa sborda, riduce il contenuto di quel riquadro (`zoom` tramite la variabile `--k`) a passi del 5%, fino al 55%. Il titolo del riquadro non viene ridotto. Non togliere il `nowrap`: senza, il testo va a capo invece di rimpicciolirsi.
 
 ---
 
