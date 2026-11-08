@@ -36,8 +36,8 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 **Metà sinistra** (griglia a 6 colonne; tutti i titoli dei riquadri centrati):
 
 1. Temperatura attuale con massima e minima del giorno (tutta la larghezza)
-2. Umidità | Pioggia oggi (con ultima ora e intensità) | Pressione (hPa, freccia verde ↑ in aumento, rossa ↓ in diminuzione, grigia ↔ stabile, e variazione "+1,2 hPa in 3 ore") — un terzo di larghezza ciascuno
-3. Vento (velocità, raffica, direzione con freccia) | Prossimi giorni (domani e dopodomani: sigla DOM/LUN…, icona, **minima / massima**, 💧 probabilità di pioggia)
+2. Umidità | Pioggia oggi (con ultima ora e intensità) | Vento (velocità, freccia, raffica e direzione) — un terzo di larghezza ciascuno
+3. Pressione (valore in hPa, freccia verde ↑ in aumento, rossa ↓ in diminuzione, grigia ↔ stabile, variazione "+1,2 in 3 ore" e mini grafico a barre: −24h, −18h, −12h, −9h, −6h, −3h, Ora; la barra "Ora" prende il colore della freccia) | Prossimi giorni (domani e dopodomani: sigla DOM/LUN…, icona, **minima / massima**, 💧 probabilità di pioggia)
 4. Striscia alba/tramonto: ☀️ Alba a sinistra, 🌙 Tramonto a destra, senza separatori
 
 **Metà destra:**
@@ -115,7 +115,7 @@ Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecch
 - **Previsione oraria da Visual Crossing:** Open-Meteo a 15 minuti (ICON-D2) e altri modelli davano risultati in contrasto con la pioggia reale. Nessuna fonte gratuita offre un nowcast radar per l'Italia (il nowcast di RainViewer è vuoto, il DPC non lo pubblica). Le barre sono quindi orarie, non a 30 minuti: le mezz'ore di Visual Crossing sono a pagamento.
 - **"Sta piovendo" ha la precedenza sulle previsioni:** si attiva se la stazione (dato non vecchio) segna intensità > 0 o se la pioggia di oggi è aumentata negli ultimi 20 minuti.
 - **Pioggia ultima ora:** l'API dà solo il totale da mezzanotte; la pagina salva le letture nel browser (`localStorage`, chiave `rainHist_<stazione>`) e somma gli incrementi. Serve ~45 minuti di pagina aperta prima che compaia; ogni dispositivo ha il suo storico.
-- **Tendenza della pressione:** l'API dà solo il valore attuale (`smlp`, pressione al livello del mare; il Worker la inoltra già, non serve modificarlo). La pagina salva le letture nel browser (`localStorage`, chiave `pressHist_<stazione>`) e confronta il valore attuale con quello di circa 3 ore prima. Serve almeno 1 ora di pagina aperta prima che compaia la freccia (prima si legge "tendenza dalle HH:MM"). Variazioni sotto 0,5 hPa = "stabile". Costanti `PRESS_SPAN_MIN`, `PRESS_MIN_SPAN`, `PRESS_STEADY` nello script.
+- **Tendenza della pressione:** l'API dà solo il valore attuale (`smlp`, pressione al livello del mare; il Worker la inoltra già, non serve modificarlo). La pagina salva le letture nel browser (`localStorage`, chiave `pressHist_<stazione>`) e confronta il valore attuale con quello di circa 3 ore prima. Serve almeno 1 ora di pagina aperta prima che compaia la freccia (prima si legge "tendenza dalle HH:MM"). Lo storico copre 25 ore e alimenta anche le barre: ogni barra usa la lettura più vicina a quell'ora (entro 40 minuti); se manca, la barra resta appena accennata e senza valore. Le barre si riempiono quindi man mano, del tutto dopo 24 ore di pagina aperta; ogni dispositivo ha il suo storico. Scala delle barre: dal minimo al massimo con almeno 6 hPa di escursione, così le piccole oscillazioni restano piccole. Variazioni sotto 0,5 hPa = "stabile". Costanti `PRESS_SPAN_MIN`, `PRESS_MIN_SPAN`, `PRESS_STEADY`, `PRESS_BARS_H` nello script.
 - **Radar DPC ricolorato:** lo stile ufficiale disegna la pioggia debole quasi trasparente; un filtro SVG (`#dpcColor`) la ricolora (azzurro → blu → verde → giallo → rosso → viola, scala indicativa). Si parte dall'istante precedente all'ultimo annunciato perché l'ultimo a volte non è ancora pronto (immagine vuota).
 - **Mappa Esri** invece di CARTO: le tile CARTO ora mostrano "API KEY REQUIRED".
 

@@ -69,8 +69,8 @@
   .notice b { font-weight: 600; white-space: nowrap; }
   .notice span { color: var(--muted); }
   .tiles {
-    /* 6 colonne: temperatura e alba/tramonto su tutta la riga, umidità/pioggia/pressione
-       2 colonne ciascuno, vento e prossimi giorni 3 colonne ciascuno */
+    /* 6 colonne: temperatura e alba/tramonto su tutta la riga, umidità/pioggia/vento
+       2 colonne ciascuno, pressione e prossimi giorni 3 colonne ciascuno */
     display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: 1.3fr 1fr 1fr auto;
     gap: var(--gap); min-height: 0; flex: 1;
   }
@@ -93,16 +93,34 @@
   .t-third .val { font-size: 7.4vh; }
   .t-third .sub { font-size: 2.3vh; }
 
-  /* Pressione: valore + freccia della tendenza (verde su, rossa giù, grigia stabile) */
-  .press-row { display: flex; align-items: center; justify-content: center; gap: 1vw; margin-top: auto; }
-  .t-third .press-row .val { margin-top: 0; white-space: nowrap; font-size: 6.6vh; }
-  .p-arrow { width: 5.2vh; height: 5.2vh; flex: none; transition: transform .6s; }
+  /* Vento nel riquadro stretto: freccia più piccola */
+  .t-third .wind-row { gap: .7vw; }
+  .t-third .arrow { width: 6.4vh; height: 6.4vh; }
+
+  /* Pressione: valore + freccia della tendenza (verde su, rossa giù, grigia stabile)
+     + mini grafico a barre delle ultime 24 ore */
+  .press-row { display: flex; align-items: center; justify-content: center; gap: 1vw; margin-top: .4vh; }
+  .press-row .val { margin-top: 0; white-space: nowrap; font-size: 5.6vh; }
+  .p-trend { font-size: 2vh; color: var(--muted); line-height: 1.25; white-space: nowrap; }
+  .p-trend b { color: var(--text); font-weight: 600; }
+  .p-trend .up { color: var(--ok); }
+  .p-trend .down { color: var(--danger); }
+  .p-arrow { width: 4.4vh; height: 4.4vh; flex: none; transition: transform .6s; }
   .p-arrow.hidden { visibility: hidden; }
   .p-arrow.up { color: var(--ok); }
   .p-arrow.down { color: var(--danger); transform: rotate(180deg); }
   .p-arrow.flat { color: var(--dim); transform: rotate(90deg); }
-  .sub .up { color: var(--ok); }
-  .sub .down { color: var(--danger); }
+  .p-bars { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: .5vw; margin-top: 1vh; min-height: 0; }
+  .p-bar { display: flex; flex-direction: column; align-items: center; min-height: 0; gap: .3vh; }
+  .p-bar em { font-style: normal; font-size: 1.5vh; color: var(--muted); min-height: 1.8vh; line-height: 1.2; }
+  .p-col { flex: 1; width: 100%; display: flex; align-items: flex-end; min-height: 0; }
+  .p-col i { display: block; width: 100%; min-height: .5vh; border-radius: .6vh .6vh 0 0; background: rgba(255,255,255,.16); transition: height .5s; }
+  .p-bar.na i { background: rgba(255,255,255,.06); }
+  .p-bar span { font-size: 1.7vh; color: var(--dim); line-height: 1.1; }
+  .p-bar.now span, .p-bar.now em { color: var(--text); font-weight: 700; }
+  .p-bar.now i { background: var(--muted); }
+  .p-bar.now.up i { background: var(--ok); }
+  .p-bar.now.down i { background: var(--danger); }
   .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 3vw; min-height: 0; }
   .t-temp .val { font-size: 19vh; margin-top: 0; }
   .minmax { display: flex; flex-direction: column; gap: 1.6vh; padding-right: 1vw; }
@@ -258,17 +276,6 @@
         </div>
 
         <div class="tile t-third" data-st>
-          <div class="label">Pressione</div>
-          <div class="press-row">
-            <div class="val num" id="press">—</div>
-            <svg class="p-arrow hidden" id="pressArrow" viewBox="0 0 100 100" aria-hidden="true">
-              <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
-            </svg>
-          </div>
-          <div class="sub" id="pressTrend">&nbsp;</div>
-        </div>
-
-        <div class="tile t-half" data-st>
           <div class="label">Vento</div>
           <div class="wind-row">
             <svg class="arrow hidden" id="windArrow" viewBox="0 0 100 100" aria-hidden="true">
@@ -277,7 +284,19 @@
             </svg>
             <div class="val num" id="wind">—<span class="u">km/h</span></div>
           </div>
-          <div class="sub">Raffica <b class="num" id="gust">—</b> · da <b id="windDir">—</b></div>
+          <div class="sub">Raffica <b class="num" id="gust">—</b><br>Da <b id="windDir">—</b></div>
+        </div>
+
+        <div class="tile t-half" data-st>
+          <div class="label">Pressione</div>
+          <div class="press-row">
+            <div class="val num" id="press">—<span class="u">hPa</span></div>
+            <svg class="p-arrow hidden" id="pressArrow" viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
+            </svg>
+            <div class="p-trend" id="pressTrend"></div>
+          </div>
+          <div class="p-bars" id="pressBars"></div>
         </div>
 
         <div class="tile t-half t-fc">
@@ -549,7 +568,8 @@ function blankStation() {
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
   setVal('wind', '—', 'km/h'); $('gust').textContent = '—'; $('windDir').textContent = '—';
   $('windArrow').classList.add('hidden');
-  setVal('press', '—'); $('pressArrow').className.baseVal = 'p-arrow hidden'; $('pressTrend').innerHTML = '&nbsp;';
+  setVal('press', '—', 'hPa'); $('pressArrow').className.baseVal = 'p-arrow hidden'; $('pressTrend').textContent = '';
+  renderPressBars(null, null, 'flat');
 }
 
 function renderStation() {
@@ -612,10 +632,12 @@ function renderStation() {
    L'API dà solo il valore attuale: per la tendenza la pagina salva le letture
    nel browser (chiave pressHist_<stazione>) e confronta il valore attuale con
    quello di circa 3 ore prima (servono almeno 60 minuti di letture).
+   Le stesse letture (ultime 24 ore) alimentano il mini grafico a barre.
    ===================================================================== */
 const PRESS_SPAN_MIN = 180;   // confronto con la lettura di ~3 ore fa
 const PRESS_MIN_SPAN = 60;    // minimo di storico per mostrare una tendenza
 const PRESS_STEADY = 0.5;     // variazioni più piccole (hPa) = "stabile"
+const PRESS_BARS_H = [24, 18, 12, 9, 6, 3, 0];   // barre: ore fa (0 = ora)
 function pressValue(d) {
   return d ? num(d.smlp ?? d.mslp ?? d.pressure) : null;
 }
@@ -627,7 +649,7 @@ function recordPressure(d) {
   if (!t || p === null || (DEMO && DEMO !== 'off')) return;
   let h = store.get(pressKey(), []);
   if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), p });
-  h = h.filter(x => x.t > t.getTime() - 4 * 3600e3).sort((a, b) => a.t - b.t);
+  h = h.filter(x => x.t > t.getTime() - 25 * 3600e3).sort((a, b) => a.t - b.t);
   store.set(pressKey(), h);
 }
 // Restituisce { diff, min } (variazione in hPa e minuti trascorsi) oppure { pending: Date|null }
@@ -647,23 +669,59 @@ function pressTrend(obsMs, p) {
 function renderPressure(d, obs) {
   const p = pressValue(d), arrow = $('pressArrow'), sub = $('pressTrend');
   if (p === null) {
-    setVal('press', '—'); arrow.className.baseVal = 'p-arrow hidden'; sub.textContent = 'hPa · non disponibile';
+    setVal('press', '—', 'hPa'); arrow.className.baseVal = 'p-arrow hidden'; sub.textContent = 'non disponibile';
+    renderPressBars(null, null, 'flat');
     return;
   }
-  setVal('press', Math.round(p));
+  setVal('press', Math.round(p), 'hPa');
   const tr = pressTrend(obs.getTime(), p);
+  let dir = 'flat';
   if (tr.diff === undefined) {
     arrow.className.baseVal = 'p-arrow hidden';
-    sub.innerHTML = `hPa · tendenza ${tr.pending && tr.pending > Date.now() ? 'dalle <b class="num">' + hhmm(tr.pending) + '</b>' : 'in calcolo…'}`;
-    return;
+    sub.innerHTML = tr.pending && tr.pending > Date.now()
+      ? `tendenza<br>dalle <b class="num">${hhmm(tr.pending)}</b>` : 'tendenza<br>in calcolo…';
+  } else {
+    dir = tr.diff >= PRESS_STEADY ? 'up' : tr.diff <= -PRESS_STEADY ? 'down' : 'flat';
+    arrow.className.baseVal = 'p-arrow ' + dir;
+    const hours = Math.max(1, Math.round(tr.min / 60));
+    const sign = tr.diff > 0 ? '+' : tr.diff < 0 ? '−' : '±';
+    sub.innerHTML = dir === 'flat'
+      ? `<b>stabile</b><br>in ${hours} ${hours === 1 ? 'ora' : 'ore'}`
+      : `<b class="num ${dir}">${sign}${fmt(Math.abs(tr.diff))}</b><br>in ${hours} ${hours === 1 ? 'ora' : 'ore'}`;
   }
-  const dir = tr.diff >= PRESS_STEADY ? 'up' : tr.diff <= -PRESS_STEADY ? 'down' : 'flat';
-  arrow.className.baseVal = 'p-arrow ' + dir;
-  const hours = Math.max(1, Math.round(tr.min / 60));
-  const sign = tr.diff > 0 ? '+' : tr.diff < 0 ? '−' : '±';
-  sub.innerHTML = dir === 'flat'
-    ? `hPa · <b>stabile</b>`
-    : `<b class="num ${dir}">${sign}${fmt(Math.abs(tr.diff))} hPa</b> in ${hours} ${hours === 1 ? 'ora' : 'ore'}`;
+  renderPressBars(obs.getTime(), p, dir);
+}
+
+// Valori per le barre: per ogni istante la lettura più vicina (entro 40 minuti)
+function pressSeries(obsMs, p) {
+  if (DEMO && DEMO !== 'off') {
+    const demo = DEMO === 'raining' ? [1014.8, 1013.9, 1012.2, 1010.6, 1009.1, 1008.1] : [1012.9, 1013.6, 1014.8, 1015.9, 1016.6, 1017.4];
+    return PRESS_BARS_H.map((hAgo, i) => ({ hAgo, v: hAgo === 0 ? p : demo[i] }));
+  }
+  const h = store.get(pressKey(), []);
+  return PRESS_BARS_H.map(hAgo => {
+    if (hAgo === 0) return { hAgo, v: p };
+    const target = obsMs - hAgo * 3600e3;
+    let best = null;
+    for (const x of h) if (Math.abs(x.t - target) <= 40 * 60e3 && (!best || Math.abs(x.t - target) < Math.abs(best.t - target))) best = x;
+    return { hAgo, v: best ? best.p : null };
+  });
+}
+function renderPressBars(obsMs, p, dir) {
+  const series = p === null ? PRESS_BARS_H.map(hAgo => ({ hAgo, v: null })) : pressSeries(obsMs, p);
+  const vals = series.map(x => x.v).filter(v => v !== null);
+  // scala: dal minimo al massimo, con almeno 6 hPa di escursione (piccole oscillazioni restano piccole)
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = Math.max(6, hi - lo + 2), mid = (lo + hi) / 2;
+  lo = mid - span / 2; hi = mid + span / 2;
+  $('pressBars').innerHTML = series.map(x => {
+    const now = x.hAgo === 0;
+    const hgt = x.v === null ? 4 : Math.round(12 + 88 * (x.v - lo) / (hi - lo));
+    return `<div class="p-bar${now ? ' now ' + dir : ''}${x.v === null ? ' na' : ''}">` +
+      `<em class="num">${x.v === null ? '' : Math.round(x.v)}</em>` +
+      `<div class="p-col"><i style="height:${hgt}%"></i></div>` +
+      `<span class="num">${now ? 'Ora' : '−' + x.hAgo + 'h'}</span></div>`;
+  }).join('');
 }
 
 function demoStation() {
