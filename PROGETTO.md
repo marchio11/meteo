@@ -4,8 +4,8 @@ Dashboard meteo a pagina singola (HTML, CSS e JavaScript, senza framework) per u
 tablet Lenovo Yoga Tab (Android 10) in orizzontale, a schermo intero, tema scuro,
 caratteri grandi leggibili da lontano.
 
-- **Pagina pubblicata:** https://meteo-marchionni.pages.dev (Cloudflare Pages, progetto `meteo-marchionni`, caricamento diretto dei file)
-- **Vecchio indirizzo (non più attivo):** https://marchio11.github.io/meteo/ — a novembre 2026 l'account GitHub è stato sospeso e la pagina è andata offline; la dashboard è stata spostata su Cloudflare Pages il 9/11/2026.
+- **Pagina pubblicata:** https://meteo-marchionni.pages.dev (Cloudflare Pages, progetto `meteo-marchionni`, collegato al repository GitHub `marchio11/meteo`, ramo `main`)
+- **Vecchio indirizzo (non più attivo):** https://marchio11.github.io/meteo/ — a novembre 2026 l'account GitHub è stato sospeso e la pagina è andata offline; la dashboard è stata spostata su Cloudflare Pages il 9/11/2026. Riavuto l'accesso, il progetto Cloudflare è stato ricreato collegato a GitHub: il repository resta l'archivio, Cloudflare pubblica. GitHub Pages va lasciato spento (Settings → Pages) per non avere due copie online.
 - **Ponte dati (Cloudflare Worker):** https://meteo-ponte.andrea-marchionni11.workers.dev
 - **Posizione di casa:** 43.86655146106417, 12.839180387625616 (Villa Ceccolini, Pesaro)
 
@@ -96,7 +96,8 @@ La vecchia variabile `STATION` non è più usata.
 
 ## Come pubblicare una modifica
 
-- **`index.html`, manifest, icone:** Cloudflare → Workers & Pages → progetto `meteo-marchionni` → **Create deployment** (nuovo caricamento) → trascinare la cartella con i 4 file (`index.html`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png`) → **Deploy**. Ricordarsi di cambiare `APP_VERSION` in `index.html`.
+- **`index.html`, manifest, icone:** basta un commit sul ramo `main` di `marchio11/meteo`: Cloudflare Pages lo pubblica da solo in circa un minuto (impostazioni del progetto: framework "None", nessun comando di build, cartella di output `/`). Ricordarsi di cambiare `APP_VERSION` in `index.html`: il tablet se ne accorge e si ricarica da solo entro 15 minuti.
+- Vengono pubblicati anche `worker.js` e `PROGETTO.md`: non contengono segreti (il token MeteoNetwork è solo nelle impostazioni del Worker).
 - **`worker.js`:** su Cloudflare → Worker → **Edit code** → incollare → **Deploy**. Dopo il Deploy aspettare 2-3 minuti prima di aprire la dashboard (vedi limiti MeteoNetwork).
 - **Aggiornamento automatico del tablet:** in cima allo script c'è `APP_VERSION` (es. `'2026-11-08.5'`). **Va cambiata a ogni modifica di `index.html`**: la dashboard ogni 15 minuti scarica la pagina pubblicata, e se la versione è diversa si ricarica da sola con `?v=<versione>` nell'indirizzo. Se non la si cambia, il tablet si aggiorna comunque, ma solo con la ricarica giornaliera o riaprendo l'app.
 - **Cache:** Cloudflare Pages chiede al browser di ricontrollare la pagina a ogni apertura (`max-age=0`), quindi non c'è attesa. Sul tablet ci pensa l'aggiornamento automatico (entro 15 minuti); la dashboard si ricarica comunque da sola una volta al giorno.
