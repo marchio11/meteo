@@ -4,7 +4,8 @@ Dashboard meteo a pagina singola (HTML, CSS e JavaScript, senza framework) per u
 tablet Lenovo Yoga Tab (Android 10) in orizzontale, a schermo intero, tema scuro,
 caratteri grandi leggibili da lontano.
 
-- **Pagina pubblicata:** https://marchio11.github.io/meteo/ (GitHub Pages, repository `marchio11/meteo`, ramo `main`, cartella principale)
+- **Pagina pubblicata:** https://meteo-marchionni.pages.dev (Cloudflare Pages, progetto `meteo-marchionni`, caricamento diretto dei file)
+- **Vecchio indirizzo (non più attivo):** https://marchio11.github.io/meteo/ — a novembre 2026 l'account GitHub è stato sospeso e la pagina è andata offline; la dashboard è stata spostata su Cloudflare Pages il 9/11/2026.
 - **Ponte dati (Cloudflare Worker):** https://meteo-ponte.andrea-marchionni11.workers.dev
 - **Posizione di casa:** 43.86655146106417, 12.839180387625616 (Villa Ceccolini, Pesaro)
 
@@ -19,7 +20,7 @@ caratteri grandi leggibili da lontano.
 | File | Cosa contiene |
 |---|---|
 | `index.html` | Tutta la dashboard: stile, struttura e codice. In cima allo script c'è il blocco `CONFIG`, l'unica parte da cambiare di solito. |
-| `worker.js` | Codice del Cloudflare Worker (il "ponte" verso MeteoNetwork). **Non** viene pubblicato da GitHub: va incollato a mano su Cloudflare. |
+| `worker.js` | Codice del Cloudflare Worker (il "ponte" verso MeteoNetwork). **Non** fa parte della pagina: va incollato a mano nel Worker su Cloudflare. |
 | `manifest.webmanifest` | Permette di installare la pagina come app a schermo intero in orizzontale. |
 | `icon-192.png`, `icon-512.png` | Icone dell'app. |
 | `PROGETTO.md` | Questa nota. |
@@ -85,7 +86,7 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 | Variabile | Tipo | Valore |
 |---|---|---|
 | `MNW_TOKEN` | Secret | Token MeteoNetwork (non scade; si ottiene con `POST https://api.meteonetwork.it/v3/login` con email e password di my.meteonetwork.it) |
-| `ALLOWED_ORIGINS` | Text | `https://marchio11.github.io` |
+| `ALLOWED_ORIGINS` | Text | `https://marchio11.github.io,https://meteo-marchionni.pages.dev` (l'indirizzo della pagina **deve** esserci, altrimenti i dati della stazione non arrivano) |
 | `MAIN_STATION` | Text, facoltativa | Predefinita `mrc065` |
 | `RAIN_STATION` | Text, facoltativa | Predefinita = `MAIN_STATION` (serve solo se la pioggia deve arrivare da un'altra stazione) |
 
@@ -95,10 +96,11 @@ La vecchia variabile `STATION` non è più usata.
 
 ## Come pubblicare una modifica
 
-- **`index.html`, manifest, icone:** caricarli nel repository `marchio11/meteo` (o fare commit sul ramo `main`). GitHub Pages pubblica in 1-2 minuti.
+- **`index.html`, manifest, icone:** Cloudflare → Workers & Pages → progetto `meteo-marchionni` → **Create deployment** (nuovo caricamento) → trascinare la cartella con i 4 file (`index.html`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png`) → **Deploy**. Ricordarsi di cambiare `APP_VERSION` in `index.html`.
 - **`worker.js`:** su Cloudflare → Worker → **Edit code** → incollare → **Deploy**. Dopo il Deploy aspettare 2-3 minuti prima di aprire la dashboard (vedi limiti MeteoNetwork).
 - **Aggiornamento automatico del tablet:** in cima allo script c'è `APP_VERSION` (es. `'2026-11-08.5'`). **Va cambiata a ogni modifica di `index.html`**: la dashboard ogni 15 minuti scarica la pagina pubblicata, e se la versione è diversa si ricarica da sola con `?v=<versione>` nell'indirizzo. Se non la si cambia, il tablet si aggiorna comunque, ma solo con la ricarica giornaliera o riaprendo l'app.
-- **Cache:** GitHub Pages fa tenere la pagina in cache fino a 10 minuti. Sul PC: Ctrl+F5. Sul tablet: chiudere e riaprire l'app, oppure aprire una volta `https://marchio11.github.io/meteo/?v=N` in Chrome. La dashboard comunque si ricarica da sola una volta al giorno.
+- **Cache:** Cloudflare Pages chiede al browser di ricontrollare la pagina a ogni apertura (`max-age=0`), quindi non c'è attesa. Sul tablet ci pensa l'aggiornamento automatico (entro 15 minuti); la dashboard si ricarica comunque da sola una volta al giorno.
+- **Storico nel browser:** le chiavi `rainHist_*` e `pressHist_*` sono legate all'indirizzo della pagina: cambiando indirizzo ripartono da zero (barre della pressione complete dopo ~24 ore).
 
 ### Prove senza dati reali
 Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecchio),
