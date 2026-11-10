@@ -11,6 +11,8 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
+    /* 1% dell'altezza visibile: lo imposta lo script (vedi fitViewport), 1vh è solo il valore iniziale */
+    --vh: 1vh;
     --bg: #0b0f14;
     --tile: #141b24;
     --tile-2: #1a2330;
@@ -24,8 +26,8 @@
     --warn: #ffb020;
     --rain: #3d8bff;
     --danger: #ff4d5e;
-    --gap: 1.4vh;
-    --radius: 1.6vh;
+    --gap: calc(1.4 * var(--vh));
+    --radius: calc(1.6 * var(--vh));
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -36,22 +38,22 @@
   .num { font-variant-numeric: tabular-nums; }
 
   .app {
-    height: 100vh; height: 100dvh; display: grid;
-    grid-template-rows: auto 1fr; gap: var(--gap); padding: var(--gap);
+    height: calc(100 * var(--vh)); display: grid;
+    grid-template-rows: auto minmax(0, 1fr); gap: var(--gap); padding: var(--gap);
   }
 
   /* ---------- header ---------- */
   header { display: flex; align-items: center; justify-content: space-between; gap: 2vw; padding: 0 0.6vw; }
-  .place { font-size: 3.6vh; font-weight: 700; letter-spacing: .02em; }
-  .place small { font-size: 2.4vh; color: var(--muted); font-weight: 500; margin-left: .8vw; }
+  .place { font-size: calc(3.6 * var(--vh)); font-weight: 700; letter-spacing: .02em; }
+  .place small { font-size: calc(2.4 * var(--vh)); color: var(--muted); font-weight: 500; margin-left: .8vw; }
   .hdr-right { display: flex; align-items: center; gap: 1.6vw; }
-  .date { font-size: 2.6vh; color: var(--muted); text-transform: capitalize; }
-  .clock { font-size: 4.6vh; font-weight: 700; }
+  .date { font-size: calc(2.6 * var(--vh)); color: var(--muted); text-transform: capitalize; }
+  .clock { font-size: calc(4.6 * var(--vh)); font-weight: 700; }
   .icon-btn {
     background: var(--tile); color: var(--muted); border: 1px solid var(--line);
-    border-radius: 1vh; font-size: 2.6vh; width: 5.4vh; height: 5.4vh; cursor: pointer;
+    border-radius: calc(1 * var(--vh)); font-size: calc(2.6 * var(--vh)); width: calc(5.4 * var(--vh)); height: calc(5.4 * var(--vh)); cursor: pointer;
   }
-  .wl { width: 1.4vh; height: 1.4vh; border-radius: 50%; background: var(--dim); display: inline-block; }
+  .wl { width: calc(1.4 * var(--vh)); height: calc(1.4 * var(--vh)); border-radius: 50%; background: var(--dim); display: inline-block; }
   .wl.on { background: var(--ok); }
 
   /* ---------- main split ---------- */
@@ -62,8 +64,8 @@
   .left { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
   .notice {
     display: none; align-items: center; gap: 1vw;
-    font-size: 2.2vh; color: var(--warn); background: rgba(255,176,32,.08);
-    border: 1px solid rgba(255,176,32,.25); border-radius: 1vh; padding: .9vh 1.2vw;
+    font-size: calc(2.2 * var(--vh)); color: var(--warn); background: rgba(255,176,32,.08);
+    border: 1px solid rgba(255,176,32,.25); border-radius: calc(1 * var(--vh)); padding: calc(.9 * var(--vh)) 1.2vw;
   }
   .notice.show { display: flex; }
   .notice b { font-weight: 600; white-space: nowrap; }
@@ -71,111 +73,111 @@
   .tiles {
     /* 6 colonne: temperatura e alba/tramonto su tutta la riga, umidità/pioggia/vento
        2 colonne ciascuno, pressione e prossimi giorni 3 colonne ciascuno */
-    display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: 1.3fr 1fr 1fr auto;
+    display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto;
     gap: var(--gap); min-height: 0; flex: 1;
   }
   .tile {
     background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 1.8vh 1.6vw; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+    padding: calc(1.8 * var(--vh)) 1.6vw; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
     position: relative; transition: opacity .4s;
   }
   .tile.stale .val, .tile.stale .sub { opacity: .35; }
   /* Adattamento automatico: se il contenuto di un riquadro non ci sta (schermo più
      piccolo, carattere più largo, numeri lunghi) fitTiles() abbassa --k per quel riquadro */
   .tile > :not(.label) { zoom: var(--k, 1); }
-  .label { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; text-align: center; }
-  .val.na { font-size: 3.6vh; color: var(--dim); font-weight: 500; white-space: normal; }
-  .val { font-size: 9vh; font-weight: 700; line-height: 1; margin-top: auto; white-space: nowrap; }
+  .label { font-size: calc(2.2 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; text-align: center; }
+  .val.na { font-size: calc(3.6 * var(--vh)); color: var(--dim); font-weight: 500; white-space: normal; }
+  .val { font-size: calc(9 * var(--vh)); font-weight: 700; line-height: 1; margin-top: auto; white-space: nowrap; }
   .val .u { font-size: .45em; color: var(--muted); font-weight: 500; margin-left: .15em; }
-  .sub { font-size: 2.7vh; color: var(--muted); margin-top: 1vh; line-height: 1.35; white-space: nowrap; }
+  .sub { font-size: calc(2.7 * var(--vh)); color: var(--muted); margin-top: calc(1 * var(--vh)); line-height: 1.35; white-space: nowrap; }
   .sub b { color: var(--text); font-weight: 600; }
 
   .t-temp { grid-column: 1 / -1; }
   .t-third { grid-column: span 2; padding-left: 1.1vw; padding-right: 1.1vw; }
   .t-half { grid-column: span 3; }
-  .t-third .val { font-size: 7.4vh; }
-  .t-third .sub { font-size: 2.3vh; }
+  .t-third .val { font-size: calc(7.4 * var(--vh)); }
+  .t-third .sub { font-size: calc(2.3 * var(--vh)); }
 
   /* Vento nel riquadro stretto: freccia più piccola */
   .t-third .wind-row { gap: .7vw; }
-  .t-third .arrow { width: 6.4vh; height: 6.4vh; }
-  .t-third .val.calm { font-size: 5.2vh; }   /* "Calma" è più larga di un numero */
+  .t-third .arrow { width: calc(6.4 * var(--vh)); height: calc(6.4 * var(--vh)); }
+  .t-third .val.calm { font-size: calc(5.2 * var(--vh)); }   /* "Calma" è più larga di un numero */
 
   /* Pressione: valore + freccia della tendenza (verde su, rossa giù, grigia stabile)
      + mini grafico a barre delle ultime 24 ore */
-  .press-row { display: flex; align-items: center; justify-content: center; gap: 1vw; margin-top: .4vh; }
-  .press-row .val { margin-top: 0; white-space: nowrap; font-size: 5.6vh; }
-  .p-trend { font-size: 2vh; color: var(--muted); line-height: 1.25; white-space: nowrap; }
+  .press-row { display: flex; align-items: center; justify-content: center; gap: 1vw; margin-top: calc(.4 * var(--vh)); }
+  .press-row .val { margin-top: 0; white-space: nowrap; font-size: calc(5.6 * var(--vh)); }
+  .p-trend { font-size: calc(2 * var(--vh)); color: var(--muted); line-height: 1.25; white-space: nowrap; }
   .p-trend b { color: var(--text); font-weight: 600; }
   .p-trend .up { color: var(--ok); }
   .p-trend .down { color: var(--danger); }
-  .p-arrow { width: 4.4vh; height: 4.4vh; flex: none; transition: transform .6s; }
+  .p-arrow { width: calc(4.4 * var(--vh)); height: calc(4.4 * var(--vh)); flex: none; transition: transform .6s; }
   .p-arrow.hidden { visibility: hidden; }
   .p-arrow.up { color: var(--ok); }
   .p-arrow.down { color: var(--danger); transform: rotate(180deg); }
   .p-arrow.flat { color: var(--dim); transform: rotate(90deg); }
-  .p-bars { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: .5vw; margin-top: 1vh; min-height: 0; }
-  .p-bar { display: flex; flex-direction: column; align-items: center; min-height: 0; gap: .3vh; }
-  .p-bar em { font-style: normal; font-size: 1.5vh; color: var(--muted); min-height: 1.8vh; line-height: 1.2; }
+  .p-bars { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: .5vw; margin-top: calc(1 * var(--vh)); min-height: 0; }
+  .p-bar { display: flex; flex-direction: column; align-items: center; min-height: 0; gap: calc(.3 * var(--vh)); }
+  .p-bar em { font-style: normal; font-size: calc(1.5 * var(--vh)); color: var(--muted); min-height: calc(1.8 * var(--vh)); line-height: 1.2; }
   .p-col { flex: 1; width: 100%; display: flex; align-items: flex-end; min-height: 0; }
-  .p-col i { display: block; width: 100%; min-height: .5vh; border-radius: .6vh .6vh 0 0; background: rgba(255,255,255,.16); transition: height .5s; }
+  .p-col i { display: block; width: 100%; min-height: calc(.5 * var(--vh)); border-radius: calc(.6 * var(--vh)) calc(.6 * var(--vh)) 0 0; background: rgba(255,255,255,.16); transition: height .5s; }
   .p-bar.na i { background: rgba(255,255,255,.06); }
-  .p-bar span { font-size: 1.7vh; color: var(--dim); line-height: 1.1; }
+  .p-bar span { font-size: calc(1.7 * var(--vh)); color: var(--dim); line-height: 1.1; }
   .p-bar.now span, .p-bar.now em { color: var(--text); font-weight: 700; }
   .p-bar.now i { background: var(--muted); }
   .p-bar.now.up i { background: var(--ok); }
   .p-bar.now.down i { background: var(--danger); }
   .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 3vw; min-height: 0; }
-  .t-temp .val { font-size: 19vh; margin-top: 0; }
-  .minmax { display: flex; flex-direction: column; gap: 1.6vh; padding-right: 1vw; }
-  .mm { display: flex; align-items: baseline; gap: .8vw; font-size: 6vh; font-weight: 700; }
-  .mm .k { font-size: 2.2vh; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; width: 4.5vw; font-weight: 600; }
+  .t-temp .val { font-size: calc(19 * var(--vh)); margin-top: 0; }
+  .minmax { display: flex; flex-direction: column; gap: calc(1.6 * var(--vh)); padding-right: 1vw; }
+  .mm { display: flex; align-items: baseline; gap: .8vw; font-size: calc(6 * var(--vh)); font-weight: 700; }
+  .mm .k { font-size: calc(2.2 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; width: 4.5vw; font-weight: 600; }
   .mm.min { color: var(--cold); }
   .mm.max { color: var(--hot); }
 
-  .hum-bar { height: 1vh; background: var(--tile-2); border-radius: 1vh; margin-top: 1.4vh; overflow: hidden; }
-  .hum-bar i { display: block; height: 100%; width: 0; background: var(--cold); border-radius: 1vh; transition: width .6s; }
+  .hum-bar { height: calc(1 * var(--vh)); background: var(--tile-2); border-radius: calc(1 * var(--vh)); margin-top: calc(1.4 * var(--vh)); overflow: hidden; }
+  .hum-bar i { display: block; height: 100%; width: 0; background: var(--cold); border-radius: calc(1 * var(--vh)); transition: width .6s; }
 
   .wind-row { display: flex; align-items: flex-end; gap: 1.2vw; margin-top: auto; }
   .wind-row .val { margin-top: 0; }
-  .arrow { width: 8vh; height: 8vh; flex: none; transition: transform .8s; }
+  .arrow { width: calc(8 * var(--vh)); height: calc(8 * var(--vh)); flex: none; transition: transform .8s; }
   .arrow.hidden { visibility: hidden; }
 
   /* Striscia alba/tramonto in fondo: alba a sinistra, tramonto a destra */
-  .t-sunbar { grid-column: 1 / -1; justify-content: center; padding-top: 1vh; padding-bottom: 1vh; }
+  .t-sunbar { grid-column: 1 / -1; justify-content: center; padding-top: calc(1 * var(--vh)); padding-bottom: calc(1 * var(--vh)); }
   .sunbar { display: flex; align-items: center; justify-content: space-between; white-space: nowrap; }
   .sun-grp { display: flex; align-items: center; gap: .9vw; }
-  .sun-ic { font-size: 4.2vh; line-height: 1; }
-  .sun-k { font-size: 2.6vh; color: var(--muted); }
-  .sun-t { font-size: 4.4vh; font-weight: 700; line-height: 1; }
+  .sun-ic { font-size: calc(4.2 * var(--vh)); line-height: 1; }
+  .sun-k { font-size: calc(2.6 * var(--vh)); color: var(--muted); }
+  .sun-t { font-size: calc(4.4 * var(--vh)); font-weight: 700; line-height: 1; }
 
   /* Previsioni dei prossimi 2 giorni (Visual Crossing) */
-  .fc-days { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1vw; margin-top: .6vh; min-height: 0; }
+  .fc-days { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1vw; margin-top: calc(.6 * var(--vh)); min-height: 0; }
   .fc-day { display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; min-height: 0; }
   .fc-day + .fc-day { border-left: 1px solid var(--line); }
-  .fc-name { font-size: 2.4vh; font-weight: 800; letter-spacing: .14em; color: var(--muted); }
-  .fc-ic { font-size: 6vh; line-height: 1; }
-  .fc-t { font-size: 3.4vh; font-weight: 700; white-space: nowrap; }
+  .fc-name { font-size: calc(2.4 * var(--vh)); font-weight: 800; letter-spacing: .14em; color: var(--muted); }
+  .fc-ic { font-size: calc(6 * var(--vh)); line-height: 1; }
+  .fc-t { font-size: calc(3.4 * var(--vh)); font-weight: 700; white-space: nowrap; }
   .fc-t .hi { color: var(--hot); }
   .fc-t .lo { color: var(--cold); }
   .fc-t .sl { color: var(--dim); font-weight: 400; margin: 0 .3vw; }
-  .fc-p { font-size: 2.4vh; color: var(--muted); white-space: nowrap; }
+  .fc-p { font-size: calc(2.4 * var(--vh)); color: var(--muted); white-space: nowrap; }
   .place .upd.old { color: var(--warn); }
 
   /* ---------- right: radar + alerts ---------- */
-  .right { display: grid; grid-template-rows: 1.7fr 1fr; gap: var(--gap); min-height: 0; }
+  .right { display: grid; grid-template-rows: minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--gap); min-height: 0; }
   .radar { position: relative; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #0e141b; }
   #map { position: absolute; inset: 0; background: #0e141b; }
   .radar-info {
-    position: absolute; left: 1.2vh; top: 1.2vh; z-index: 800;
-    background: rgba(11,15,20,.78); border: 1px solid var(--line); border-radius: 1vh;
-    padding: .8vh 1vw; font-size: 2.3vh; display: flex; align-items: center; gap: .8vw;
+    position: absolute; left: calc(1.2 * var(--vh)); top: calc(1.2 * var(--vh)); z-index: 800;
+    background: rgba(11,15,20,.78); border: 1px solid var(--line); border-radius: calc(1 * var(--vh));
+    padding: calc(.8 * var(--vh)) 1vw; font-size: calc(2.3 * var(--vh)); display: flex; align-items: center; gap: .8vw;
     pointer-events: none;
   }
-  .radar-info .t { font-weight: 700; font-size: 2.8vh; }
+  .radar-info .t { font-weight: 700; font-size: calc(2.8 * var(--vh)); }
   .radar-info .lbl { color: var(--muted); }
-  .frames { position: absolute; left: 1.2vh; right: 1.2vh; bottom: 2.4vh; z-index: 800; display: flex; gap: .4vw; pointer-events: none; }
-  .frames i { flex: 1; height: .7vh; border-radius: .5vh; background: rgba(255,255,255,.18); }
+  .frames { position: absolute; left: calc(1.2 * var(--vh)); right: calc(1.2 * var(--vh)); bottom: calc(2.4 * var(--vh)); z-index: 800; display: flex; gap: .4vw; pointer-events: none; }
+  .frames i { flex: 1; height: calc(.7 * var(--vh)); border-radius: calc(.5 * var(--vh)); background: rgba(255,255,255,.18); }
   .frames i.on { background: var(--text); }
   .frames i.nc { background: rgba(61,139,255,.35); }
   .frames i.nc.on { background: var(--rain); }
@@ -184,23 +186,23 @@
   .dpc-tile img { filter: url(#dpcColor); }
   /* Attribuzione della mappa: piccola e discreta, nell'angolo in basso a destra */
   .leaflet-control-attribution {
-    font-size: 1vh !important; line-height: 1.5 !important; padding: 0 .5vw !important; margin: 0 !important;
+    font-size: calc(1 * var(--vh)) !important; line-height: 1.5 !important; padding: 0 .5vw !important; margin: 0 !important;
     background: rgba(11,15,20,.55) !important; color: var(--dim) !important; opacity: .7;
-    border-top-left-radius: .6vh;
+    border-top-left-radius: calc(.6 * var(--vh));
   }
   .leaflet-control-attribution a { color: var(--dim) !important; }
 
   .alert {
     border-radius: var(--radius); border: 1px solid var(--line); background: var(--tile);
-    padding: 2vh 1.8vw; display: flex; flex-direction: column; min-height: 0; transition: background .5s, border-color .5s;
+    padding: calc(2 * var(--vh)) 1.8vw; display: flex; flex-direction: column; min-height: 0; transition: background .5s, border-color .5s;
   }
   .alert-top { display: flex; align-items: center; gap: 1.6vw; flex: 1; min-height: 0; }
-  .alert-icon { font-size: 9vh; line-height: 1; flex: none; }
-  .alert-title { font-size: min(6.2vh, 3.3vw); font-weight: 800; line-height: 1.05; }
-  .alert-sub { font-size: 2.6vh; color: var(--muted); margin-top: .8vh; }
-  .alert.none .alert-title { color: var(--ok); font-size: 5vh; }
+  .alert-icon { font-size: calc(9 * var(--vh)); line-height: 1; flex: none; }
+  .alert-title { font-size: min(calc(6.2 * var(--vh)), 3.3vw); font-weight: 800; line-height: 1.05; }
+  .alert-sub { font-size: calc(2.6 * var(--vh)); color: var(--muted); margin-top: calc(.8 * var(--vh)); }
+  .alert.none .alert-title { color: var(--ok); font-size: calc(5 * var(--vh)); }
   .alert.later { border-color: rgba(61,139,255,.45); }
-  .alert.later .alert-title { font-size: 4.8vh; color: #9cc4ff; }
+  .alert.later .alert-title { font-size: calc(4.8 * var(--vh)); color: #9cc4ff; }
   .alert.rain { background: linear-gradient(135deg, #1d4ed8, #3d8bff); border-color: #6ea8ff; }
   .alert.rain.mod { background: linear-gradient(135deg, #b45309, #f59e0b); border-color: #fbbf24; }
   .alert.rain.heavy { background: linear-gradient(135deg, #b91c1c, #ef4444); border-color: #f87171; }
@@ -208,34 +210,37 @@
   .alert.rain .alert-title { color: #fff; }
   .alert.rain.pulse { animation: pulse 2.4s ease-in-out infinite; }
   @keyframes pulse { 50% { filter: brightness(1.18); } }
-  .alert.err .alert-title { font-size: 4vh; color: var(--muted); }
+  .alert.err .alert-title { font-size: calc(4 * var(--vh)); color: var(--muted); }
 
-  .bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: .6vw; height: 9vh; margin-top: 1.4vh; align-items: end; }
-  .bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: .5vh; }
-  .bar i { width: 100%; border-radius: .6vh .6vh 0 0; background: rgba(255,255,255,.12); min-height: .5vh; transition: height .5s; }
+  .bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: .6vw; height: calc(9 * var(--vh)); margin-top: calc(1.4 * var(--vh)); align-items: end; }
+  .bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: calc(.5 * var(--vh)); }
+  .bar i { width: 100%; border-radius: calc(.6 * var(--vh)) calc(.6 * var(--vh)) 0 0; background: rgba(255,255,255,.12); min-height: calc(.5 * var(--vh)); transition: height .5s; }
   .bar i.wet { background: var(--rain); }
   .alert.rain .bar i { background: rgba(255,255,255,.3); }
   .alert.rain .bar i.wet { background: #fff; }
-  .bars span { font-size: 1.9vh; color: var(--muted); }
-  .bars em { font-style: normal; font-size: 1.6vh; color: var(--muted); min-height: 1.9vh; }
+  .bars span { font-size: calc(1.9 * var(--vh)); color: var(--muted); }
+  .bars em { font-style: normal; font-size: calc(1.6 * var(--vh)); color: var(--muted); min-height: calc(1.9 * var(--vh)); }
   .alert.rain .bars em { color: rgba(255,255,255,.85); }
   .bar.obs span { font-weight: 700; color: var(--text); }
   .bar.fc i.wet { opacity: .55; }                /* previsione: più chiara della misura */
-  .bars-note { font-size: 1.7vh; color: var(--dim); margin-top: .6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bars-note { font-size: calc(1.7 * var(--vh)); color: var(--dim); margin-top: calc(.6 * var(--vh)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bars-note:empty { display: none; }
   .alert.rain .bars-note { color: rgba(255,255,255,.8); }
 
   /* ---------- riquadro fonti (pulsante ⓘ) ---------- */
   .info-panel {
-    position: fixed; top: 9vh; right: 1.4vw; z-index: 2000; display: none;
+    position: fixed; top: calc(9 * var(--vh)); right: 1.4vw; z-index: 2000; display: none;
     background: rgba(20,27,36,.97); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 2vh 2vw; max-width: 46vw; box-shadow: 0 1vh 4vh rgba(0,0,0,.5);
+    padding: calc(2 * var(--vh)) 2vw; max-width: 46vw; box-shadow: 0 calc(1 * var(--vh)) calc(4 * var(--vh)) rgba(0,0,0,.5);
   }
   .info-panel.show { display: block; }
-  .info-panel h3 { font-size: 2.4vh; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-bottom: 1.2vh; }
-  .info-panel ul { list-style: none; display: flex; flex-direction: column; gap: .9vh; }
-  .info-panel li { font-size: 2.2vh; line-height: 1.3; }
+  .info-panel h3 { font-size: calc(2.4 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-bottom: calc(1.2 * var(--vh)); }
+  .info-panel ul { list-style: none; display: flex; flex-direction: column; gap: calc(.9 * var(--vh)); }
+  .info-panel li { font-size: calc(2.2 * var(--vh)); line-height: 1.3; }
   .info-panel li span { color: var(--muted); }
+  .info-panel .diag-h { margin-top: calc(2 * var(--vh)); }
+  .info-panel .diag { font-size: calc(1.7 * var(--vh)); color: var(--muted); line-height: 1.5; }
+  .info-panel .diag b { color: var(--warn); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -354,6 +359,8 @@
     <li><b>RainViewer</b> <span>– radar di riserva</span></li>
     <li><b>Esri</b> <span>– mappa di base</span></li>
   </ul>
+  <h3 class="diag-h">Misure dello schermo</h3>
+  <div class="diag num" id="vpDiag"></div>
 </div>
 
 <!-- Filtro colori per il radar DPC -->
@@ -384,7 +391,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-09.1';
+const APP_VERSION = '2026-11-10.1';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -417,6 +424,59 @@ const store = {
 };
 
 $('placeName').textContent = CONFIG.PLACE_LABEL;
+
+/* =====================================================================
+   ALTEZZA DELLO SCHERMO
+   Sul tablet (app a schermo intero) Chrome, dopo una ricarica automatica della
+   pagina, a volte dichiara un'altezza più grande di quella visibile (circa la
+   barra di navigazione di Android): tutta la dashboard si ingrandisce e il fondo
+   finisce fuori schermo. Riaprendo l'app la misura torna giusta.
+   Quindi: all'apertura "a mano" memorizzo l'altezza; dopo una ricarica fatta
+   dalla pagina stessa (aggiornamento o ricarica giornaliera) non uso mai
+   un'altezza più grande di quella memorizzata. Tutte le misure del CSS usano
+   --vh (1% dell'altezza) invece di vh.
+   ===================================================================== */
+const SELF_RELOAD = (() => {
+  try { const v = sessionStorage.getItem('selfReload') === '1'; sessionStorage.removeItem('selfReload'); return v; }
+  catch { return false; }
+})();
+function selfReload(go) {
+  try { sessionStorage.setItem('selfReload', '1'); } catch {}
+  go();
+}
+function vpKey() {
+  const fs = matchMedia('(display-mode: fullscreen)').matches ? 'app' : 'browser';
+  return `${Math.max(screen.width, screen.height)}_${innerWidth > innerHeight ? 'L' : 'P'}_${fs}`;
+}
+let vpLast = '';
+function fitViewport() {
+  const vv = window.visualViewport;
+  const seen = Math.round(Math.min(innerHeight, vv ? vv.height : Infinity));
+  const good = store.get('goodHeight', {}), k = vpKey();
+  let h = seen;
+  if (!SELF_RELOAD) { if (good[k] !== seen) { good[k] = seen; store.set('goodHeight', good); } }
+  else if (good[k] && seen > good[k]) h = good[k];
+  const prev = document.documentElement.style.getPropertyValue('--vh');
+  document.documentElement.style.setProperty('--vh', (h / 100) + 'px');
+  if (window.vpReady && prev !== (h / 100) + 'px') { map && map.invalidateSize(); fitSoon(); }
+  // registro per il pannello ⓘ (solo quando cambia qualcosa)
+  const sig = `${seen}/${h}/${innerWidth}`;
+  if (sig !== vpLast) {
+    vpLast = sig;
+    const log = store.get('vpLog', []);
+    log.push({ t: Date.now(), self: SELF_RELOAD, w: innerWidth, seen, used: h, scr: `${screen.width}×${screen.height}` });
+    store.set('vpLog', log.slice(-8));
+  }
+}
+function renderVpLog() {
+  const fmtT = (t) => new Date(t).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  $('vpDiag').innerHTML = store.get('vpLog', []).slice().reverse().map(x =>
+    `${fmtT(x.t)} · ${x.self ? 'ricarica automatica' : 'apertura'} · ${x.w}×${x.seen}` +
+    (x.used !== x.seen ? ` → <b>corretta a ${x.used}</b>` : '')).join('<br>');
+}
+fitViewport();
+['resize', 'orientationchange', 'fullscreenchange'].forEach(ev => window.addEventListener(ev, fitViewport));
+if (window.visualViewport) visualViewport.addEventListener('resize', fitViewport);
 
 /* ---------- orologio ---------- */
 function tickClock() {
@@ -1157,9 +1217,10 @@ let infoTimer = null;
 function closeInfo() { $('infoPanel').classList.remove('show'); clearTimeout(infoTimer); }
 $('infoBtn').addEventListener('click', () => {
   if ($('infoPanel').classList.contains('show')) return closeInfo();
+  renderVpLog();
   $('infoPanel').classList.add('show');
   clearTimeout(infoTimer);
-  infoTimer = setTimeout(closeInfo, 8000);
+  infoTimer = setTimeout(closeInfo, 15000);
 });
 $('infoPanel').addEventListener('click', closeInfo);
 
@@ -1221,9 +1282,9 @@ initMap();
 refreshAll();
 setInterval(() => { lastRefresh = 0; refreshAll(); }, CONFIG.REFRESH_MIN * 60e3);
 setInterval(loadRadar, RADAR_REFRESH_MIN * 60e3);              // il radar DPC si aggiorna ogni 5 minuti
-setInterval(() => { renderStation(); renderAlert(); renderSun(); }, 30e3);   // età dati, "tra X minuti", alba/tramonto
+setInterval(() => { fitViewport(); renderStation(); renderAlert(); renderSun(); }, 30e3);   // età dati, "tra X minuti", alba/tramonto
 renderSun();
-setTimeout(() => location.reload(), 24 * 3600e3);              // ricarica completa 1 volta al giorno
+setTimeout(() => selfReload(() => location.reload()), 24 * 3600e3);              // ricarica completa 1 volta al giorno
 
 /* Aggiornamento automatico: ogni 15 minuti scarico la pagina pubblicata (senza cache)
    e confronto APP_VERSION. Se è cambiata, ricarico con ?v=<nuova versione>: un indirizzo
@@ -1238,12 +1299,13 @@ async function checkForUpdate() {
     if (!m || m[1] === APP_VERSION) return;
     const q = new URLSearchParams(location.search);
     q.set('v', m[1]);
-    location.replace(location.pathname + '?' + q);
+    selfReload(() => location.replace(location.pathname + '?' + q));
   } catch { /* rete assente: riprovo al prossimo giro */ }
 }
 setInterval(checkForUpdate, UPDATE_CHECK_MIN * 60e3);
 setTimeout(checkForUpdate, 60e3);                              // primo controllo un minuto dopo l'avvio
 requestWakeLock();
+window.vpReady = true;
 </script>
 </body>
 </html>
