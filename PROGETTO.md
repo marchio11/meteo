@@ -43,7 +43,7 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 
 **Metà destra:**
 
-1. Radar animato (RainViewer; in alternativa Protezione Civile), centrato su casa (segnalino rosso)
+1. Radar animato della Protezione Civile (riserva RainViewer), centrato su casa (segnalino rosso)
 2. Riquadro avvisi pioggia: titolo grande ("Sta piovendo", "Pioggia tra X minuti",
    "Nessuna pioggia prevista"…) e barre: prima barra **"Ora"** = pioggia misurata dalla
    stazione, poi le prossime 5 ore intere con mm e probabilità.
@@ -58,8 +58,8 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 | Barre orarie pioggia, "Pioggia tra X minuti", "fino alle…" | **Visual Crossing** (gratis, senza chiave) | Solo dati orari nel piano gratuito. |
 | Previsione prossimi 2 giorni | **Visual Crossing** (stessa richiesta delle barre) | Icona, tempmin, tempmax, precipprob. |
 | Riserva se Visual Crossing non risponde | **Open-Meteo** | Orario + giornaliero. CC BY 4.0. |
-| Radar (principale dal 12/11/2026) | **RainViewer** | Ultime ~2 ore, un'immagine ogni 10 min, zoom nativo massimo 7. Gratis, senza chiave. |
-| Radar alternativo / di riserva | **Radar-DPC, Dipartimento della Protezione Civile** (prodotto SRI, WMS) | Ultima ora, un'immagine ogni 5 min. CC BY-SA 4.0. |
+| Radar (principale) | **Radar-DPC, Dipartimento della Protezione Civile** (prodotto SRI, WMS) | Ultima ora, un'immagine ogni 5 min, colori ricalibrati in mm/h. CC BY-SA 4.0. |
+| Radar di riserva | **RainViewer** | Ultime ~2 ore, un'immagine ogni 10 min, zoom nativo massimo 7. Gratis, senza chiave. |
 | Mappa di base | **Esri** (World Dark Gray) | |
 | Alba e tramonto | Calcolo astronomico nella pagina | Nessun servizio esterno. |
 
@@ -79,7 +79,7 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 | `RAIN_MM_H` | 0.1 | Soglia mm/ora per considerare un'ora "di pioggia" (se probabile ≥ 40%; ≥ 0,3 mm conta sempre) |
 | `ALERT_WITHIN_MIN` | 60 | Banner grande se la pioggia arriva entro questi minuti |
 | `RADAR_ZOOM` | 8 | Zoom della mappa |
-| `RADAR` | `'rainviewer'` | Radar principale: `'rainviewer'` o `'dpc'`; l'altro fa da riserva. Per provare l'altro senza modificare il file: `?radar=dpc` nell'indirizzo |
+| `RADAR` | `'dpc'` | Radar principale: `'dpc'` o `'rainviewer'`; l'altro fa da riserva. Per provare l'altro senza modificare il file: `?radar=rainviewer` nell'indirizzo |
 | `FORECAST_BARS` | true | `false` nasconde le barre orarie |
 
 ### Cloudflare Worker → Settings → Variables and Secrets
@@ -125,7 +125,7 @@ Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecch
 - **Tendenza della pressione:** l'API dà solo il valore attuale (`smlp`, pressione al livello del mare; il Worker la inoltra già, non serve modificarlo). La pagina salva le letture nel browser (`localStorage`, chiave `pressHist_<stazione>`) e confronta il valore attuale con quello di circa 3 ore prima. Serve almeno 1 ora di pagina aperta prima che compaia la freccia (prima si legge "tendenza dalle HH:MM"). Lo storico copre 25 ore e alimenta anche le barre: ogni barra usa la lettura più vicina a quell'ora (entro 40 minuti); se manca, la barra resta appena accennata e senza valore. Le barre si riempiono quindi man mano, del tutto dopo 24 ore di pagina aperta; ogni dispositivo ha il suo storico. Scala delle barre: dal minimo al massimo con almeno 6 hPa di escursione, così le piccole oscillazioni restano piccole. Variazioni sotto 0,5 hPa = "stabile". Costanti `PRESS_SPAN_MIN`, `PRESS_MIN_SPAN`, `PRESS_STEADY`, `PRESS_BARS_H` nello script.
 - **Tendenza della temperatura:** come per la pressione, la pagina salva le letture (`localStorage`, chiave `tempHist_<stazione>`, ultime 3 ore) e confronta il valore attuale con quello di circa 1 ora prima (servono almeno 30 minuti di letture, prima la freccia non compare). Variazioni sotto 0,3 °C = stabile. Costanti `TEMP_SPAN_MIN`, `TEMP_MIN_SPAN`, `TEMP_STEADY`.
 - **Radar DPC ricolorato:** lo stile ufficiale disegna la pioggia debole quasi trasparente; un filtro SVG (`#dpcColor`) la ricolora con una scala in mm/h tarata sui valori reali (vedi sotto). Si parte dall'istante precedente all'ultimo annunciato perché l'ultimo a volte non è ancora pronto (immagine vuota).
-- **Radar DPC: falsi allarmi di pioggia intensa (12/11/2026):** il confronto sugli stessi minuti ha mostrato che i dati DPC sono corretti (nei colori originali erano quasi tutti pioggia debole), ma il filtro `#dpcColor` amplificava troppo l'opacità e colorava la pioggia debole di rosso/viola. Per questo il radar principale è tornato RainViewer. Lo stesso giorno il filtro è stato **ricalibrato** sui valori reali: interrogando il server DPC (GetFeatureInfo restituisce i mm/h di un punto) si è visto che nella parte ciano mm/h ≈ 0,5 + 0,062 × opacità (1 mm/h ≈ opacità 8, 2 ≈ 25, 5 ≈ 73, 10 ≈ 150), poi il DPC passa a verde (~10-20 mm/h) e a giallo (20-30+). Taratura verificata su 25 punti a caso. Colori: una prima scala multicolore (verde/giallo/viola) era poco leggibile, quindi si usa la scala "tutta blu" dei radar classici, come RainViewer, sfumata: < 1 mm/h azzurro molto chiaro · 1-2 azzurro · 2-5 blu · 5-10 blu scuro · 10-20 giallo · 20-30 arancione · oltre rosso. Nota: a parità di minuto il DPC indica spesso pioggia moderata dove RainViewer la disegna debole; per scegliere quale tenere, confrontarli con la pioggia misurata dalla stazione.
+- **Radar DPC: falsi allarmi di pioggia intensa (12/11/2026):** il confronto sugli stessi minuti ha mostrato che i dati DPC sono corretti (nei colori originali erano quasi tutti pioggia debole), ma il filtro `#dpcColor` amplificava troppo l'opacità e colorava la pioggia debole di rosso/viola. Per questo il radar principale è tornato RainViewer. Lo stesso giorno il filtro è stato **ricalibrato** sui valori reali: interrogando il server DPC (GetFeatureInfo restituisce i mm/h di un punto) si è visto che nella parte ciano mm/h ≈ 0,5 + 0,062 × opacità (1 mm/h ≈ opacità 8, 2 ≈ 25, 5 ≈ 73, 10 ≈ 150), poi il DPC passa a verde (~10-20 mm/h) e a giallo (20-30+). Taratura verificata su 25 punti a caso. Colori: una prima scala multicolore (verde/giallo/viola) era poco leggibile, quindi si usa la scala "tutta blu" dei radar classici, come RainViewer, sfumata: < 1 mm/h azzurro molto chiaro · 1-2 azzurro · 2-5 blu · 5-10 blu scuro · 10-20 giallo · 20-30 arancione · oltre rosso. Nota: a parità di minuto il DPC indica spesso pioggia moderata dove RainViewer la disegna debole; per scegliere quale tenere, confrontarli con la pioggia misurata dalla stazione. Dopo qualche giorno di confronto (13/11/2026) il DPC con la scala blu è risultato più preciso ed è tornato radar principale; RainViewer resta come riserva.
 - **Mappa Esri** invece di CARTO: le tile CARTO ora mostrano "API KEY REQUIRED".
 
 ---

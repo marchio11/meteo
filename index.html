@@ -127,11 +127,11 @@
   .p-bar.now i { background: var(--muted); }
   .p-bar.now.up i { background: var(--ok); }
   .p-bar.now.down i { background: var(--danger); }
-  .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 1.2vw; min-height: 0; }
-  .t-temp .val { font-size: calc(14.5 * var(--vh)); margin-top: 0; }
+  .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: .8vw; min-height: 0; }
+  .t-temp .val { font-size: calc(16 * var(--vh)); margin-top: 0; }
   /* Freccia della tendenza della temperatura (ultima ora): ↗ arancione in aumento,
      ↘ azzurra in diminuzione, → grigia stabile */
-  .t-arrow { width: calc(7 * var(--vh)); height: calc(7 * var(--vh)); flex: none; transition: transform .6s; }
+  .t-arrow { width: calc(4.6 * var(--vh)); height: calc(4.6 * var(--vh)); flex: none; transition: transform .6s; }
   .t-arrow.hidden { visibility: hidden; }
   .t-arrow.up { color: var(--hot); transform: rotate(45deg); }
   .t-arrow.down { color: var(--cold); transform: rotate(135deg); }
@@ -365,8 +365,8 @@
     <li><b>MeteoNetwork</b> <span>– dati della stazione Celletta/Pentagono, Pesaro (licenza CC BY 4.0)</span></li>
     <li><b>Visual Crossing</b> <span>– previsioni orarie e dei prossimi giorni</span></li>
     <li><b>Open-Meteo</b> <span>– previsioni di riserva (licenza CC BY 4.0)</span></li>
-    <li><b>RainViewer</b> <span>– radar delle precipitazioni</span></li>
-    <li><b>Radar-DPC, Dipartimento della Protezione Civile</b> <span>– radar alternativo / di riserva (licenza CC BY-SA 4.0)</span></li>
+    <li><b>Radar-DPC, Dipartimento della Protezione Civile</b> <span>– radar delle precipitazioni (licenza CC BY-SA 4.0)</span></li>
+    <li><b>RainViewer</b> <span>– radar di riserva</span></li>
     <li><b>Esri</b> <span>– mappa di base</span></li>
   </ul>
   <h3 class="diag-h">Misure dello schermo</h3>
@@ -408,7 +408,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-13.1';
+const APP_VERSION = '2026-11-13.2';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -426,7 +426,7 @@ const CONFIG = {
   RADAR_ZOOM: 8,
   // Radar principale: 'rainviewer' oppure 'dpc' (Protezione Civile). L'altro fa da riserva.
   // Per provare l'altro senza cambiare qui: aggiungere ?radar=dpc (o ?radar=rainviewer) all'indirizzo.
-  RADAR: 'rainviewer',
+  RADAR: 'dpc',
   FORECAST_BARS: true,   // false = nasconde le barre orarie della pioggia sotto il radar
 };
 
