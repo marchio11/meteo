@@ -127,11 +127,18 @@
   .p-bar.now i { background: var(--muted); }
   .p-bar.now.up i { background: var(--ok); }
   .p-bar.now.down i { background: var(--danger); }
-  .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 3vw; min-height: 0; }
-  .t-temp .val { font-size: calc(19 * var(--vh)); margin-top: 0; }
-  .minmax { display: flex; flex-direction: column; gap: calc(1.6 * var(--vh)); padding-right: 1vw; }
-  .mm { display: flex; align-items: baseline; gap: .8vw; font-size: calc(6 * var(--vh)); font-weight: 700; }
-  .mm .k { font-size: calc(2.2 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; width: 4.5vw; font-weight: 600; }
+  .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 1.2vw; min-height: 0; }
+  .t-temp .val { font-size: calc(14.5 * var(--vh)); margin-top: 0; }
+  /* Freccia della tendenza della temperatura (ultima ora): ↗ arancione in aumento,
+     ↘ azzurra in diminuzione, → grigia stabile */
+  .t-arrow { width: calc(7 * var(--vh)); height: calc(7 * var(--vh)); flex: none; transition: transform .6s; }
+  .t-arrow.hidden { visibility: hidden; }
+  .t-arrow.up { color: var(--hot); transform: rotate(45deg); }
+  .t-arrow.down { color: var(--cold); transform: rotate(135deg); }
+  .t-arrow.flat { color: var(--dim); transform: rotate(90deg); }
+  .minmax { display: flex; flex-direction: column; gap: calc(1.6 * var(--vh)); padding-right: .4vw; }
+  .mm { display: flex; align-items: baseline; gap: .8vw; font-size: calc(5.4 * var(--vh)); font-weight: 700; }
+  .mm .k { font-size: calc(2.2 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; width: 3.8vw; font-weight: 600; }
   .mm.min { color: var(--cold); }
   .mm.max { color: var(--hot); }
 
@@ -265,6 +272,9 @@
           <div class="label">Temperatura</div>
           <div class="temp-row">
             <div class="val num" id="temp">—<span class="u">°C</span></div>
+            <svg class="t-arrow hidden" id="tempArrow" viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
+            </svg>
             <div class="minmax">
               <div class="mm max num"><span class="k">Max</span><span id="tmax">—</span></div>
               <div class="mm min num"><span class="k">Min</span><span id="tmin">—</span></div>
@@ -398,7 +408,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-12.3';
+const APP_VERSION = '2026-11-13.1';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -553,6 +563,7 @@ async function loadStation() {
     stationError = null;
     recordRain(d);
     recordPressure(d);
+    recordTemp(d);
   } catch (e) {
     stationError = e.message || String(e);
   }
@@ -640,7 +651,7 @@ function showNotice(title, text) {
 }
 function blankStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
-  setVal('temp', '—', '°C'); $('tmax').textContent = '—'; $('tmin').textContent = '—';
+  setVal('temp', '—', '°C'); $('tempArrow').className.baseVal = 't-arrow hidden'; $('tmax').textContent = '—'; $('tmin').textContent = '—';
   setVal('rh', '—', '%'); $('rhBar').style.width = '0';
   $('rainDay').classList.remove('na');
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
@@ -675,6 +686,7 @@ function renderStation() {
 
   const T = num(d.temperature), tmin = num(d.current_tmin), tmax = num(d.current_tmax);
   setVal('temp', fmt(T), '°C');
+  renderTempTrend(T, obs);
   $('tmax').textContent = tmax === null ? '—' : fmt(tmax) + '°';
   $('tmin').textContent = tmin === null ? '—' : fmt(tmin) + '°';
 
@@ -720,6 +732,35 @@ const PRESS_SPAN_MIN = 180;   // confronto con la lettura di ~3 ore fa
 const PRESS_MIN_SPAN = 60;    // minimo di storico per mostrare una tendenza
 const PRESS_STEADY = 0.5;     // variazioni più piccole (hPa) = "stabile"
 const PRESS_BARS_H = [24, 18, 12, 9, 6, 3, 0];   // barre: ore fa (0 = ora)
+
+/* TENDENZA DELLA TEMPERATURA: come per la pressione, la pagina salva le letture
+   (chiave tempHist_<stazione>) e confronta il valore attuale con quello di circa
+   1 ora prima (servono almeno 30 minuti di letture). Sotto ±0,3 °C = stabile. */
+const TEMP_SPAN_MIN = 60, TEMP_MIN_SPAN = 30, TEMP_STEADY = 0.3;
+function tempKey() {
+  return 'tempHist_' + ((station && station.station_code) || 'staz');
+}
+function recordTemp(d) {
+  const t = parseUtc(d.observation_time_utc), v = num(d.temperature);
+  if (!t || v === null || (DEMO && DEMO !== 'off')) return;
+  let h = store.get(tempKey(), []);
+  if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), v });
+  h = h.filter(x => x.t > t.getTime() - 3 * 3600e3).sort((a, b) => a.t - b.t);
+  store.set(tempKey(), h);
+}
+function renderTempTrend(T, obs) {
+  const arrow = $('tempArrow');
+  let diff = null;
+  if (DEMO && DEMO !== 'off') diff = DEMO === 'raining' ? -1.4 : 0.8;
+  else if (T !== null) {
+    const obsMs = obs.getTime(), target = obsMs - TEMP_SPAN_MIN * 60e3;
+    const cand = store.get(tempKey(), []).filter(x => x.t <= obsMs - TEMP_MIN_SPAN * 60e3 && x.t >= target - 20 * 60e3);
+    if (cand.length) diff = T - cand.reduce((a, b) => Math.abs(b.t - target) < Math.abs(a.t - target) ? b : a).v;
+  }
+  const dir = diff === null ? 'hidden' : diff >= TEMP_STEADY ? 'up' : diff <= -TEMP_STEADY ? 'down' : 'flat';
+  arrow.className.baseVal = 't-arrow ' + dir;
+  arrow.setAttribute('aria-label', diff === null ? '' : `${diff > 0 ? '+' : ''}${fmt(diff)} °C nell'ultima ora`);
+}
 function pressValue(d) {
   return d ? num(d.smlp ?? d.mslp ?? d.pressure) : null;
 }
