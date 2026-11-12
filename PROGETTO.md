@@ -48,6 +48,8 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
    "Nessuna pioggia prevista"…) e barre: prima barra **"Ora"** = pioggia misurata dalla
    stazione, poi le prossime 5 ore intere con mm e probabilità.
 
+
+**Telefono in verticale** (dal 13/11/2026): blocco `@media (orientation: portrait)` in fondo allo stile, che sul tablet in orizzontale non ha effetto (verificato con screenshot identici al pixel prima/dopo). Una colonna da scorrere: intestazione su due righe → temperatura → radar (quadrato) → avviso pioggia con barre → umidità | pioggia | vento → pressione → prossimi giorni → alba/tramonto. Le sezioni `.left`, `.tiles`, `.right` diventano `display: contents` e i riquadri sono riordinati con `order`. In verticale `--vh` vale 1/80 della larghezza (impostata da `fitViewport()`), non dell'altezza. Sul telefono usare la pagina dal browser (o un segnalibro/collegamento): il manifest forza l'orientamento orizzontale, quindi "Installa app" sul telefono la aprirebbe in orizzontale.
 ---
 
 ## Fonti dei dati
