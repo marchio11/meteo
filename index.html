@@ -6,7 +6,14 @@
 <meta name="theme-color" content="#0b0f14">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Meteo Pesaro</title>
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" id="manifestLink" href="manifest.webmanifest">
+<script>
+  /* Telefono (lato corto dello schermo sotto 520 px): app verticale con l'icona a quadrato
+     arrotondato. Il tablet (lato corto ~800 px) continua a usare manifest.webmanifest,
+     orizzontale e a schermo intero, che resta invariato. */
+  if (Math.min(screen.width, screen.height) < 520)
+    document.getElementById('manifestLink').href = 'manifest-phone.webmanifest';
+</script>
 <link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
@@ -271,6 +278,7 @@
     .tile { padding: calc(2.2 * var(--vh)) calc(2.6 * var(--vh)); }
     .t-temp { order: 1; min-height: calc(32 * var(--vh)); }
     .radar { grid-column: 1 / -1; order: 2; height: calc(80 * var(--vh)); }
+    .radar .leaflet-container { touch-action: pan-y; }   /* il dito sul radar scorre la pagina */
     .alert { grid-column: 1 / -1; order: 3; min-height: calc(30 * var(--vh)); padding: calc(2.4 * var(--vh)) calc(2.6 * var(--vh)); }
     .alert-title { font-size: calc(5.6 * var(--vh)); }
     .t-third { order: 4; min-height: calc(30 * var(--vh)); padding-left: calc(1.6 * var(--vh)); padding-right: calc(1.6 * var(--vh)); }
@@ -441,7 +449,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-13.3';
+const APP_VERSION = '2026-11-13.4';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -934,6 +942,14 @@ function initMap() {
   L.circleMarker([CONFIG.LAT, CONFIG.LON], {
     radius: 8, color: '#fff', weight: 3, fillColor: '#ff4d5e', fillOpacity: 1, pane: 'labels',
   }).addTo(map);
+  applyMapTouch();
+  PORTRAIT.addEventListener('change', applyMapTouch);
+}
+// In verticale (telefono) la mappa non si trascina né si zooma con le dita: il dito
+// scorre la pagina. In orizzontale (tablet) resta tutto come prima.
+function applyMapTouch() {
+  if (!map) return;
+  for (const h of ['dragging', 'touchZoom', 'doubleClickZoom']) PORTRAIT.matches ? map[h].disable() : map[h].enable();
 }
 
 async function loadRadar() {

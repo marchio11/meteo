@@ -21,8 +21,10 @@ caratteri grandi leggibili da lontano.
 |---|---|
 | `index.html` | Tutta la dashboard: stile, struttura e codice. In cima allo script c'è il blocco `CONFIG`, l'unica parte da cambiare di solito. |
 | `worker.js` | Codice del Cloudflare Worker (il "ponte" verso MeteoNetwork). **Non** fa parte della pagina: va incollato a mano nel Worker su Cloudflare. |
-| `manifest.webmanifest` | Permette di installare la pagina come app a schermo intero in orizzontale. |
-| `icon-192.png`, `icon-512.png` | Icone dell'app. |
+| `manifest.webmanifest` | App del **tablet**: schermo intero, orizzontale, icone `icon-192/512.png`. Non modificarlo senza motivo: il tablet lo usa così. |
+| `manifest-phone.webmanifest` | App del **telefono**: verticale, con barra di stato, icone `icon-phone-192/512.png` (quadrato arrotondato stile Borealis). Lo sceglie uno script in testa a `index.html` quando il lato corto dello schermo è sotto 520 px. |
+| `icon-192.png`, `icon-512.png` | Icone dell'app sul tablet. |
+| `icon-phone-192.png`, `icon-phone-512.png` | Icone dell'app sul telefono (blu, angoli arrotondati trasparenti, `purpose: any` così il telefono non le ritaglia a cerchio). |
 | `PROGETTO.md` | Questa nota. |
 
 ---
@@ -49,7 +51,7 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
    stazione, poi le prossime 5 ore intere con mm e probabilità.
 
 
-**Telefono in verticale** (dal 13/11/2026): blocco `@media (orientation: portrait)` in fondo allo stile, che sul tablet in orizzontale non ha effetto (verificato con screenshot identici al pixel prima/dopo). Una colonna da scorrere: intestazione su due righe → temperatura → radar (quadrato) → avviso pioggia con barre → umidità | pioggia | vento → pressione → prossimi giorni → alba/tramonto. Le sezioni `.left`, `.tiles`, `.right` diventano `display: contents` e i riquadri sono riordinati con `order`. In verticale `--vh` vale 1/80 della larghezza (impostata da `fitViewport()`), non dell'altezza. Sul telefono usare la pagina dal browser (o un segnalibro/collegamento): il manifest forza l'orientamento orizzontale, quindi "Installa app" sul telefono la aprirebbe in orizzontale.
+**Telefono in verticale** (dal 13/11/2026): blocco `@media (orientation: portrait)` in fondo allo stile, che sul tablet in orizzontale non ha effetto (verificato con screenshot identici al pixel prima/dopo). Una colonna da scorrere: intestazione su due righe → temperatura → radar (quadrato) → avviso pioggia con barre → umidità | pioggia | vento → pressione → prossimi giorni → alba/tramonto. Le sezioni `.left`, `.tiles`, `.right` diventano `display: contents` e i riquadri sono riordinati con `order`. In verticale `--vh` vale 1/80 della larghezza (impostata da `fitViewport()`), non dell'altezza. Sul telefono si può installare come app: usa `manifest-phone.webmanifest` (verticale). In verticale la mappa del radar non si trascina né si zooma con le dita (`applyMapTouch()`, `touch-action: pan-y`), così il pollice scorre la pagina; in orizzontale (tablet) trascinamento e zoom restano attivi.
 ---
 
 ## Fonti dei dati
