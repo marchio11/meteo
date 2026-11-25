@@ -56,6 +56,9 @@
     padding: calc(2 * var(--vh)); transition: background 1.5s, border-color 1.5s;
   }
   .dog img { flex: 1; min-height: 0; width: 100%; object-fit: contain; transition: opacity .8s; }
+  /* ora e data sotto il cane (piccole: la precedenza resta alle temperature) */
+  .dclock { font-size: calc(13 * var(--vh)); font-weight: 700; line-height: 1; margin-top: calc(1.5 * var(--vh)); }
+  .ddate { font-size: calc(4.2 * var(--vh)); color: var(--muted); text-transform: capitalize; white-space: nowrap; margin-top: calc(.6 * var(--vh)); }
   .dog img[hidden] { display: none; }
   /* segnaposto finché non ci sono le immagini: cane + accessorio */
   .dog-ph { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; font-size: calc(40 * var(--vh)); line-height: 1; }
@@ -154,6 +157,8 @@
       <img id="dogImg" alt="" hidden>
       <div class="dog-ph" id="dogPh"><span>🐕</span><span class="acc" id="dogAcc"></span></div>
       <div class="dog-cap" id="dogCap"></div>
+      <div class="dclock num" id="dclock">--:--</div>
+      <div class="ddate" id="ddate"></div>
       <div class="status" id="status"></div>
     </section>
 
@@ -188,7 +193,7 @@
    ===================================================================== */
 // Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate).
-const APP_VERSION = '2026-11-25.4';
+const APP_VERSION = '2026-11-25.5';
 
 const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
@@ -257,6 +262,13 @@ function fitViewport() {
     document.documentElement.style.setProperty('--vh', v);
     fitSoon();
   }
+}
+
+/* ---------- ora e data (sotto il cane) ---------- */
+function tickClock() {
+  const d = new Date();
+  $('dclock').textContent = hhmm(d);
+  $('ddate').textContent = d.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 /* ---------- alba e tramonto ---------- */
@@ -628,6 +640,7 @@ if (window.visualViewport) visualViewport.addEventListener('resize', fitViewport
 new MutationObserver(fitSoon).observe($('app'), { childList: true, subtree: true, characterData: true });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
 
+tickClock(); setInterval(tickClock, 1000);
 renderSun(); applyNight(); renderIndoor(); renderDog();
 loadStation(); loadForecast();
 setInterval(loadStation, CONFIG.REFRESH_MIN * 60e3);

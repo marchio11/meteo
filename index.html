@@ -208,11 +208,17 @@
 
   .alert {
     border-radius: var(--radius); border: 1px solid var(--line); background: var(--tile);
-    padding: calc(2 * var(--vh)) 1.8vw; display: flex; flex-direction: column; min-height: 0; transition: background .5s, border-color .5s;
+    padding: calc(2 * var(--vh)) 1.8vw; min-height: 0; transition: background .5s, border-color .5s;
+    /* a sinistra avviso e barre, a destra lo Shiba */
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto auto; column-gap: 1.4vw;
   }
+  .alert > :not(.a-dog) { grid-column: 1; }
+  .a-dog { grid-column: 2; grid-row: 1 / -1; align-self: center; height: calc(24 * var(--vh)); max-height: 100%; width: auto; }
+  .a-dog[hidden] { display: none; }
+  .alert.has-dog .alert-icon { display: none; }   /* c'è lo Shiba: la nuvoletta non serve */
   .alert-top { display: flex; align-items: center; gap: 1.6vw; flex: 1; min-height: 0; }
   .alert-icon { font-size: calc(9 * var(--vh)); line-height: 1; flex: none; }
-  .alert-title { font-size: min(calc(6.2 * var(--vh)), 3.3vw); font-weight: 800; line-height: 1.05; }
+  .alert-title { font-size: min(calc(6.2 * var(--vh)), 2.9vw); font-weight: 800; line-height: 1.05; }
   .alert-sub { font-size: calc(2.6 * var(--vh)); color: var(--muted); margin-top: calc(.8 * var(--vh)); }
   .alert.none .alert-title { color: var(--ok); font-size: calc(5 * var(--vh)); }
   .alert.later { border-color: rgba(61,139,255,.45); }
@@ -226,7 +232,7 @@
   @keyframes pulse { 50% { filter: brightness(1.18); } }
   .alert.err .alert-title { font-size: calc(4 * var(--vh)); color: var(--muted); }
 
-  .bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: .6vw; height: calc(9 * var(--vh)); margin-top: calc(1.4 * var(--vh)); align-items: end; }
+  .bars { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6vw; height: calc(9 * var(--vh)); margin-top: calc(1.4 * var(--vh)); align-items: end; }
   .bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: calc(.5 * var(--vh)); }
   .bar i { width: 100%; border-radius: calc(.6 * var(--vh)) calc(.6 * var(--vh)) 0 0; background: rgba(255,255,255,.12); min-height: calc(.5 * var(--vh)); transition: height .5s; }
   .bar i.wet { background: var(--rain); }
@@ -394,6 +400,7 @@
         </div>
         <div class="bars" id="bars"></div>
         <div class="bars-note" id="barsNote"></div>
+        <img class="a-dog" id="dogImg" alt="" hidden>
       </div>
     </section>
   </main>
@@ -449,7 +456,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-13.4';
+const APP_VERSION = '2026-11-25.1';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -469,6 +476,13 @@ const CONFIG = {
   // Per provare l'altro senza cambiare qui: aggiungere ?radar=dpc (o ?radar=rainviewer) all'indirizzo.
   RADAR: 'dpc',
   FORECAST_BARS: true,   // false = nasconde le barre orarie della pioggia sotto il radar
+  BAR_HOURS: 3,          // quante ore di previsione mostrare dopo la barra "Ora"
+
+  // Shiba nel riquadro della pioggia: soglie per il vestito (temperatura della stazione)
+  DOG_HOT: 27,           // da qui in su: occhiali da sole e costume
+  DOG_COOL: 16,          // sotto: felpa
+  DOG_COLD: 8,           // sotto: cappotto
+  DOG_WIND: 45,          // raffica (km/h) oltre cui è "giornata di vento"
 };
 
 /* ===================================================================== */
@@ -1113,7 +1127,7 @@ async function forecastVisualCrossing() {
   // L'orario indicato è l'inizio dell'ora (come sul sito Visual Crossing)
   const slots = hours.map(h => ({
     start: h.datetimeEpoch * 1000, end: h.datetimeEpoch * 1000 + 3600e3,
-    mm: h.precip ?? 0, prob: h.precipprob ?? null,
+    mm: h.precip ?? 0, prob: h.precipprob ?? null, icon: h.icon || '',
   }));
   const daily = days.slice(1, 3).map(d => ({
     time: d.datetimeEpoch * 1000, icon: VC_ICONS[d.icon] || '☁️',
@@ -1203,7 +1217,7 @@ function isWetHour(s) {
 function renderAlert() {
   const box = $('alert');
   const setState = (cls, icon, title, sub) => {
-    box.className = 'alert ' + cls;
+    box.className = 'alert ' + cls + ($('dogImg').hidden ? '' : ' has-dog');
     $('alertIcon').textContent = icon;
     $('alertTitle').textContent = title;
     $('alertSub').textContent = sub;
@@ -1218,6 +1232,7 @@ function renderAlert() {
   if (first) for (const s of future.slice(future.indexOf(first))) { if (isWetHour(s)) wetRun.push(s); else break; }
   const until = wetRun.length ? hhmm(new Date(wetRun[wetRun.length - 1].end)) : null;
 
+  renderDog();
   const raining = stationRainNow();   // { mmh } se la stazione misura pioggia adesso
   const dryNow = stationDryNow();     // true se la stazione è aggiornata e non piove
   renderBars(future, now, raining, dryNow);
@@ -1264,6 +1279,49 @@ function renderAlert() {
   }
 }
 
+/* =====================================================================
+   SHIBA (stesse immagini e stessi criteri di camera.html, cartella shiba/)
+   pioggia > neve > vento > caldo > freddo > fresco > normale.
+   Prova di uno stato: ?shiba=caldo
+   ===================================================================== */
+const DOG_STATES = ['pioggia', 'neve', 'vento', 'caldo', 'freddo', 'fresco', 'normale', 'dorme'];
+function dogState() {
+  const f = params.get('shiba');
+  if (f && DOG_STATES.includes(f)) return f;
+  const d = station, obs = d ? parseUtc(d.observation_time_utc) : null;
+  const fresh = !!obs && (Date.now() - obs) / 60e3 <= CONFIG.STALE_MIN;
+  const T = fresh ? num(d.temperature) : null;
+  const now = Date.now();
+  const cur = slots ? slots.find(s => s.start <= now && s.end > now) : null;
+  const sky = (cur && cur.icon) || '';
+  if (stationRainNow()) return T !== null && T <= 1 ? 'neve' : 'pioggia';
+  if (sky.includes('snow') || sky === 'sleet') return 'neve';
+  if (!rainFresh(d) && cur && isWetHour(cur)) return 'pioggia';   // senza pluviometro mi fido della previsione
+  const ws = fresh ? num(d.wind_speed) : null, wg = fresh ? num(d.wind_gust) : null;
+  if (ws !== null && ws >= CONFIG.DOG_WIND * 0.6 && wg !== null && wg >= CONFIG.DOG_WIND) return 'vento';
+  if (T === null) return 'normale';
+  if (T >= CONFIG.DOG_HOT) return 'caldo';
+  if (T < CONFIG.DOG_COLD) return 'freddo';
+  if (T < CONFIG.DOG_COOL) return 'fresco';
+  return 'normale';
+}
+let dogShown = '';
+function renderDog() {
+  const st = dogState();
+  if (st === dogShown) return;
+  dogShown = st;
+  const img = $('dogImg');
+  const tries = [`shiba/${st}.png`, 'shiba/normale.png'];
+  const next = () => {
+    const src = tries.shift();
+    if (!src) { img.hidden = true; $('alert').classList.remove('has-dog'); return; }
+    img.onerror = next;
+    img.onload = () => { img.hidden = false; $('alert').classList.add('has-dog'); };
+    img.src = src + '?v=' + APP_VERSION;
+  };
+  next();
+}
+
 // La stazione è aggiornata e non sta piovendo?
 function stationDryNow() {
   const d = station;
@@ -1282,7 +1340,7 @@ function renderBars(future, now, raining, dryNow) {
     return;
   }
   const current = future.find(s => s.start <= now);          // ora in corso
-  const hours = future.filter(s => s.start > now).slice(0, 5); // prossime 5 ore intere
+  const hours = future.filter(s => s.start > now).slice(0, CONFIG.BAR_HOURS); // prossime ore intere
   const obsMmh = raining ? raining.mmh : dryNow ? 0 : null;
   const max = Math.max(2, obsMmh || 0, ...hours.map(s => s.mm));
   const height = (v, wet) => (wet ? Math.max(12, Math.min(100, (v / max) * 100)) : 4);
