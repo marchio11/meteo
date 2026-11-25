@@ -47,7 +47,7 @@
     gap: var(--gap); padding: calc(3 * var(--vh)) calc(3.5 * var(--vh));
     transition: transform 2s;            /* spostamento anti burn-in, vedi pixelShift() */
   }
-  main { display: grid; grid-template-columns: 1fr 0.9fr 1fr; gap: var(--gap); min-height: 0; }
+  main { display: grid; grid-template-columns: 1fr 0.62fr 1fr; gap: var(--gap); min-height: 0; }
 
   /* ---------- Shiba al centro ---------- */
   .dog { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
@@ -57,7 +57,7 @@
   .dog-ph { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; font-size: calc(40 * var(--vh)); line-height: 1; }
   .dog-ph .acc { position: absolute; right: -6%; top: 6%; font-size: .45em; }
   .dog-ph[hidden] { display: none; }
-  .dog-cap { font-size: calc(4.6 * var(--vh)); color: var(--muted); white-space: nowrap; margin-top: calc(1 * var(--vh)); }
+  .dog-cap { display: none; }   /* didascalia nascosta: basta l'immagine (resta come testo alternativo) */
   body.night .dog img, body.night .dog-ph { filter: grayscale(1) brightness(.35); }
   body.night .dog-cap { display: none; }
   /* ---------- riquadri Fuori / Camera ---------- */
@@ -79,7 +79,7 @@
   /* di notte le emoji diventano grigio scuro (sarebbero le cose più luminose dello schermo) */
   body.night .em { filter: grayscale(1) brightness(.35); }
   .temp-row { flex: 1; display: flex; align-items: center; justify-content: center; gap: calc(1 * var(--vh)); min-height: 0; }
-  .val { font-size: calc(27 * var(--vh)); font-weight: 700; line-height: 1; white-space: nowrap; }
+  .val { font-size: calc(30 * var(--vh)); font-weight: 700; line-height: 1; white-space: nowrap; }
   .val .u { font-size: .4em; color: var(--muted); font-weight: 500; vertical-align: .9em; margin-left: .05em; }
   .tile.stale .val, .tile.stale .sub { opacity: .35; }
   .t-arrow { width: calc(8 * var(--vh)); height: calc(8 * var(--vh)); flex: none; transition: transform .6s; }
@@ -184,7 +184,7 @@
    ===================================================================== */
 // Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate).
-const APP_VERSION = '2026-11-25.2';
+const APP_VERSION = '2026-11-25.3';
 
 const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
@@ -458,6 +458,7 @@ function renderDog() {
   dogShown = st;
   const img = $('dogImg'), ph = $('dogPh');
   $('dogCap').textContent = DOG_STATES[st].cap;
+  img.alt = DOG_STATES[st].cap;
   $('dogAcc').textContent = DOG_STATES[st].acc;
   const tries = [`shiba/${st}.png`, 'shiba/normale.png'];
   const next = () => {
