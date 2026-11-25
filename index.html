@@ -208,13 +208,16 @@
 
   .alert {
     border-radius: var(--radius); border: 1px solid var(--line); background: var(--tile);
-    padding: calc(2 * var(--vh)) 1.8vw; min-height: 0; transition: background .5s, border-color .5s;
-    /* a sinistra avviso e barre, a destra lo Shiba */
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto auto; column-gap: 1.4vw;
+    padding: calc(2 * var(--vh)) 1.8vw; display: flex; flex-direction: column; min-height: 0; transition: background .5s, border-color .5s;
   }
-  .alert > :not(.a-dog) { grid-column: 1; }
-  .a-dog { grid-column: 2; grid-row: 1 / -1; align-self: center; height: calc(24 * var(--vh)); max-height: 100%; width: auto; }
-  .a-dog[hidden] { display: none; }
+  /* In basso a destra: riquadro pioggia + riquadro separato dello Shiba */
+  .r-bottom { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--gap); min-height: 0; }
+  .dog-tile {
+    background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center; padding: calc(1.2 * var(--vh)); min-height: 0;
+  }
+  .dog-tile[hidden] { display: none; }
+  .dog-tile img { height: calc(26 * var(--vh)); max-height: 100%; width: auto; display: block; }
   .alert.has-dog .alert-icon { display: none; }   /* c'è lo Shiba: la nuvoletta non serve */
   .alert-top { display: flex; align-items: center; gap: 1.6vw; flex: 1; min-height: 0; }
   .alert-icon { font-size: calc(9 * var(--vh)); line-height: 1; flex: none; }
@@ -285,6 +288,10 @@
     .t-temp { order: 1; min-height: calc(32 * var(--vh)); }
     .radar { grid-column: 1 / -1; order: 2; height: calc(80 * var(--vh)); }
     .radar .leaflet-container { touch-action: pan-y; }   /* il dito sul radar scorre la pagina */
+    .r-bottom { grid-column: 1 / -1; order: 3; }
+    .r-bottom > .alert { grid-column: 1; order: 0; min-width: 0; }   /* pioggia a sinistra, Shiba a destra */
+    .r-bottom > .dog-tile { grid-column: 2; }
+    .dog-tile img { height: calc(22 * var(--vh)); }
     .alert { grid-column: 1 / -1; order: 3; min-height: calc(30 * var(--vh)); padding: calc(2.4 * var(--vh)) calc(2.6 * var(--vh)); }
     .alert-title { font-size: calc(5.6 * var(--vh)); }
     .t-third { order: 4; min-height: calc(30 * var(--vh)); padding-left: calc(1.6 * var(--vh)); padding-right: calc(1.6 * var(--vh)); }
@@ -390,6 +397,7 @@
         <div class="frames" id="frames"></div>
       </div>
 
+      <div class="r-bottom">
       <div class="alert none" id="alert">
         <div class="alert-top">
           <div class="alert-icon" id="alertIcon">☁️</div>
@@ -400,7 +408,8 @@
         </div>
         <div class="bars" id="bars"></div>
         <div class="bars-note" id="barsNote"></div>
-        <img class="a-dog" id="dogImg" alt="" hidden>
+      </div>
+      <div class="dog-tile" id="dogTile" hidden><img id="dogImg" alt=""></div>
       </div>
     </section>
   </main>
@@ -456,7 +465,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-25.1';
+const APP_VERSION = '2026-11-25.2';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -1217,7 +1226,7 @@ function isWetHour(s) {
 function renderAlert() {
   const box = $('alert');
   const setState = (cls, icon, title, sub) => {
-    box.className = 'alert ' + cls + ($('dogImg').hidden ? '' : ' has-dog');
+    box.className = 'alert ' + cls + ($('dogTile').hidden ? '' : ' has-dog');
     $('alertIcon').textContent = icon;
     $('alertTitle').textContent = title;
     $('alertSub').textContent = sub;
@@ -1314,9 +1323,9 @@ function renderDog() {
   const tries = [`shiba/${st}.png`, 'shiba/normale.png'];
   const next = () => {
     const src = tries.shift();
-    if (!src) { img.hidden = true; $('alert').classList.remove('has-dog'); return; }
+    if (!src) { $('dogTile').hidden = true; $('alert').classList.remove('has-dog'); return; }
     img.onerror = next;
-    img.onload = () => { img.hidden = false; $('alert').classList.add('has-dog'); };
+    img.onload = () => { $('dogTile').hidden = false; $('alert').classList.add('has-dog'); };
     img.src = src + '?v=' + APP_VERSION;
   };
   next();
