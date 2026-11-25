@@ -210,8 +210,10 @@
     border-radius: var(--radius); border: 1px solid var(--line); background: var(--tile);
     padding: calc(2 * var(--vh)) 1.8vw; display: flex; flex-direction: column; min-height: 0; transition: background .5s, border-color .5s;
   }
-  /* In basso a destra: riquadro pioggia + riquadro separato dello Shiba */
-  .r-bottom { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--gap); min-height: 0; }
+  /* In basso a destra: riquadro separato dello Shiba (a sinistra) + riquadro pioggia */
+  .r-bottom > .alert { grid-column: 2; grid-row: 1; }
+  .r-bottom > .dog-tile { grid-column: 1; grid-row: 1; }
+  .r-bottom { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--gap); min-height: 0; }
   .dog-tile {
     background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);
     display: flex; align-items: center; justify-content: center; padding: calc(1.2 * var(--vh)); min-height: 0;
@@ -289,8 +291,8 @@
     .radar { grid-column: 1 / -1; order: 2; height: calc(80 * var(--vh)); }
     .radar .leaflet-container { touch-action: pan-y; }   /* il dito sul radar scorre la pagina */
     .r-bottom { grid-column: 1 / -1; order: 3; }
-    .r-bottom > .alert { grid-column: 1; order: 0; min-width: 0; }   /* pioggia a sinistra, Shiba a destra */
-    .r-bottom > .dog-tile { grid-column: 2; }
+    .r-bottom > .alert { grid-column: 2; grid-row: 1; order: 0; min-width: 0; }   /* Shiba a sinistra, pioggia a destra */
+    .r-bottom > .dog-tile { grid-column: 1; grid-row: 1; }
     .dog-tile img { height: calc(22 * var(--vh)); }
     .alert { grid-column: 1 / -1; order: 3; min-height: calc(30 * var(--vh)); padding: calc(2.4 * var(--vh)) calc(2.6 * var(--vh)); }
     .alert-title { font-size: calc(5.6 * var(--vh)); }
@@ -465,7 +467,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-25.2';
+const APP_VERSION = '2026-11-25.3';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
