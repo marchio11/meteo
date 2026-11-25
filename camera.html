@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Meteo Camera</title>
+<link rel="manifest" href="manifest-camera.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+  /* Pagina per il Pixel 8 in orizzontale sulla basetta, in camera da letto.
+     Schermo OLED: sfondo nero puro (pixel spenti = niente luce e niente consumo). */
+  :root {
+    --vh: 1vh;                 /* 1% dell'altezza visibile, impostata da fitViewport() */
+    --bg: #000;
+    --tile: #0b0f14;
+    --line: #1a2330;
+    --text: #e6edf5;           /* non bianco pieno: meno usura dell'OLED */
+    --muted: #8a9bb0;
+    --dim: #4d5b6d;
+    --cold: #5ab0ff;
+    --hot: #ff7a59;
+    --ok: #3ddc97;
+    --warn: #ffb020;
+    --danger: #ff4d5e;
+    --gap: calc(2 * var(--vh));
+    --radius: calc(3 * var(--vh));
+  }
+  /* NOTTE: niente riquadri, solo testo rosso tenue su nero (il rosso disturba meno il sonno) */
+  body.night {
+    --tile: #000; --line: #000;
+    --text: #9c3a31; --muted: #6e2a24; --dim: #4a1c18;
+    --cold: #7a2f28; --hot: #7a2f28; --ok: #7a2f28; --warn: #7a2f28; --danger: #7a2f28;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
+  }
+  body { transition: color 1.5s; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .app {
+    height: calc(100 * var(--vh)); display: grid; grid-template-rows: minmax(0, 1fr) auto;
+    gap: var(--gap); padding: calc(3 * var(--vh)) calc(3.5 * var(--vh));
+    transition: transform 2s;            /* spostamento anti burn-in, vedi pixelShift() */
+  }
+  main { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: var(--gap); min-height: 0; }
+
+  /* ---------- orologio ---------- */
+  .clock-col { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 0; }
+  .clock { font-size: min(calc(33 * var(--vh)), 12.5vw); font-weight: 700; line-height: .95; letter-spacing: -.02em; }
+  .date { font-size: calc(6 * var(--vh)); color: var(--muted); text-transform: capitalize; margin-top: calc(1.5 * var(--vh)); white-space: nowrap; }
+  .sun { display: flex; gap: calc(4 * var(--vh)); margin-top: calc(3 * var(--vh)); font-size: calc(5 * var(--vh)); color: var(--muted); white-space: nowrap; }
+  .sun b { color: var(--text); font-weight: 600; }
+
+  /* ---------- riquadri Fuori / Camera ---------- */
+  .tile {
+    background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: calc(3 * var(--vh)) calc(3 * var(--vh)); display: flex; flex-direction: column;
+    min-height: 0; min-width: 0; overflow: hidden; position: relative; transition: background 1.5s, border-color 1.5s;
+  }
+  .tile > :not(.label) { zoom: var(--k, 1); }   /* fitTiles() rimpicciolisce se qualcosa sborda */
+  .label {
+    font-size: calc(4.4 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .14em;
+    font-weight: 700; text-align: center; white-space: nowrap;
+  }
+  .badge {
+    font-size: calc(2.8 * var(--vh)); letter-spacing: .08em; color: var(--warn); border: 1px solid currentColor;
+    border-radius: calc(1 * var(--vh)); padding: 0 calc(.8 * var(--vh)); margin-left: calc(1 * var(--vh)); vertical-align: middle;
+  }
+  body.night .badge, body.night .sun { display: none; }
+  /* di notte le emoji diventano grigio scuro (sarebbero le cose più luminose dello schermo) */
+  body.night .em { filter: grayscale(1) brightness(.35); }
+  .temp-row { flex: 1; display: flex; align-items: center; justify-content: center; gap: calc(1 * var(--vh)); min-height: 0; }
+  .val { font-size: calc(27 * var(--vh)); font-weight: 700; line-height: 1; white-space: nowrap; }
+  .val .u { font-size: .4em; color: var(--muted); font-weight: 500; vertical-align: .9em; margin-left: .05em; }
+  .tile.stale .val, .tile.stale .sub { opacity: .35; }
+  .t-arrow { width: calc(8 * var(--vh)); height: calc(8 * var(--vh)); flex: none; transition: transform .6s; }
+  .t-arrow.hidden { display: none; }
+  .t-arrow.up { color: var(--hot); transform: rotate(45deg); }
+  .t-arrow.down { color: var(--cold); transform: rotate(135deg); }
+  .t-arrow.flat { color: var(--dim); transform: rotate(90deg); }
+  .sub {
+    display: flex; justify-content: center; gap: calc(3 * var(--vh)); font-size: calc(5.2 * var(--vh));
+    color: var(--muted); white-space: nowrap;
+  }
+  .sub b { color: var(--text); font-weight: 600; }
+  .sub .lo { color: var(--cold); }
+  .sub .hi { color: var(--hot); }
+  .sub2 { margin-top: calc(1.2 * var(--vh)); font-size: calc(4.4 * var(--vh)); }
+  .dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: var(--dim); margin-right: .35em; vertical-align: .05em; }
+  .dot.good { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--danger); }
+
+  /* ---------- striscia in basso (solo di giorno) ---------- */
+  .strip {
+    display: grid; grid-template-columns: 1.3fr 1fr 1fr auto; gap: var(--gap); align-items: center;
+    background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: calc(1.6 * var(--vh)) calc(3 * var(--vh)); font-size: calc(5 * var(--vh)); white-space: nowrap;
+  }
+  body.night .strip { display: none; }
+  .s-item { display: flex; align-items: center; justify-content: center; gap: calc(1.6 * var(--vh)); min-width: 0; }
+  .s-k { color: var(--muted); font-size: .82em; text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
+  .s-ic { font-size: 1.25em; line-height: 1; }
+  .s-item .lo { color: var(--cold); } .s-item .hi { color: var(--hot); }
+  .s-item .p { color: var(--muted); font-size: .85em; }
+  .p-arrow { width: 1.1em; height: 1.1em; flex: none; }
+  .p-arrow.hidden { display: none; }
+  .p-arrow.up { color: var(--ok); }
+  .p-arrow.down { color: var(--danger); transform: rotate(180deg); }
+  .p-arrow.flat { color: var(--dim); transform: rotate(90deg); }
+  .p-diff { color: var(--muted); font-size: .82em; }
+  .p-diff.up { color: var(--ok); } .p-diff.down { color: var(--danger); }
+  .icon-btn {
+    background: none; color: var(--dim); border: 1px solid var(--line); border-radius: calc(2 * var(--vh));
+    font-size: 1em; width: calc(9 * var(--vh)); height: calc(9 * var(--vh)); cursor: pointer;
+  }
+  .wl { width: calc(2 * var(--vh)); height: calc(2 * var(--vh)); border-radius: 50%; background: var(--dim); display: inline-block; }
+  .wl.on { background: var(--ok); }
+  .btns { display: flex; align-items: center; gap: calc(2 * var(--vh)); }
+
+  /* Aggiornamento dati vecchio / errore: riga sottile sotto l'orologio */
+  .status { font-size: calc(4 * var(--vh)); color: var(--warn); margin-top: calc(2 * var(--vh)); white-space: nowrap; min-height: 1.2em; }
+  body.night .status { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <main>
+    <section class="clock-col">
+      <div class="clock num" id="clock">--:--</div>
+      <div class="date" id="date"></div>
+      <div class="sun" id="sun">
+        <span>☀️ <b class="num" id="sunrise">—</b></span>
+        <span>🌙 <b class="num" id="sunset">—</b></span>
+      </div>
+      <div class="status" id="status"></div>
+    </section>
+
+    <section class="tile" id="tOut">
+      <div class="label">Fuori</div>
+      <div class="temp-row">
+        <div class="val num" id="outTemp">—<span class="u">°</span></div>
+        <svg class="t-arrow hidden" id="outArrow" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="sub num"><span><span class="em">💧</span> <b id="outRh">—</b></span></div>
+      <div class="sub sub2 num"><span class="lo" id="outMin">min —</span><span class="hi" id="outMax">max —</span></div>
+    </section>
+
+    <section class="tile" id="tIn">
+      <div class="label">Camera<span class="badge" id="inDemo" hidden>DEMO</span></div>
+      <div class="temp-row">
+        <div class="val num" id="inTemp">—<span class="u">°</span></div>
+      </div>
+      <div class="sub num"><span><span class="em">💧</span> <b id="inRh">—</b></span></div>
+      <div class="sub sub2"><span id="inComfort">—</span></div>
+    </section>
+  </main>
+
+  <footer class="strip" id="strip">
+    <div class="s-item">
+      <span class="s-k">Pressione</span>
+      <b class="num" id="press">—</b>
+      <svg class="p-arrow hidden" id="pressArrow" viewBox="0 0 100 100" aria-hidden="true">
+        <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
+      </svg>
+      <span class="p-diff num" id="pressDiff"></span>
+    </div>
+    <div class="s-item" id="fc0"><span class="s-k">—</span></div>
+    <div class="s-item" id="fc1"><span class="s-k">—</span></div>
+    <div class="btns">
+      <span class="wl" id="wl" title="Schermo sempre acceso"></span>
+      <button class="icon-btn" id="fsBtn" title="Schermo intero" aria-label="Schermo intero">⛶</button>
+    </div>
+  </footer>
+</div>
+
+<script>
+/* =====================================================================
+   CONFIGURAZIONE — modifica solo questa parte
+   ===================================================================== */
+// Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
+// si accorge della novità e si ricarica da solo (vedi checkForUpdate).
+const APP_VERSION = '2026-11-25.1';
+
+const CONFIG = {
+  WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
+  LAT: 43.86655146106417,   // casa: alba/tramonto e previsioni
+  LON: 12.839180387625616,
+
+  REFRESH_MIN: 5,           // dati stazione (il Worker comunque li riusa per 5 minuti)
+  FORECAST_MIN: 30,         // previsioni dei prossimi giorni
+  STALE_MIN: 30,            // oltre questi minuti il dato esterno è "vecchio"
+
+  // Modalità notte: solo ora e temperature, rosso tenue su nero.
+  // Toccando lo schermo di notte torna la vista di giorno per NIGHT_PEEK_S secondi.
+  NIGHT_FROM: '22:30',
+  NIGHT_TO: '07:00',
+  NIGHT_PEEK_S: 30,
+
+  // Sensore della camera: finché non c'è il GW1200 i valori sono INVENTATI.
+  INDOOR_DEMO: true,
+
+  // Comfort della camera da letto
+  COMFORT_T: [17, 22],      // °C considerati ideali per dormire
+  COMFORT_RH: [40, 60],     // % di umidità ideale
+};
+
+/* ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const DEMO = params.get('demo');            // ?demo=1 : anche i dati esterni sono finti
+const isDemo = !!DEMO && DEMO !== 'off';
+const pad = (n) => String(n).padStart(2, '0');
+const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const fmt = (n, dec = 1) => n === null ? '—' : n.toFixed(dec).replace('.', ',').replace('-', '−');
+const store = {
+  get(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const parseUtc = (s) => { if (!s) return null; const d = new Date(String(s).replace(' ', 'T') + 'Z'); return isNaN(d) ? null : d; };
+
+/* =====================================================================
+   ALTEZZA DELLO SCHERMO (stessa correzione della pagina del salotto:
+   dopo una ricarica automatica Chrome a volte dichiara un'altezza più grande
+   di quella visibile; uso l'altezza memorizzata all'apertura "a mano")
+   ===================================================================== */
+const SELF_RELOAD = (() => {
+  try { const v = sessionStorage.getItem('selfReload') === '1'; sessionStorage.removeItem('selfReload'); return v; }
+  catch { return false; }
+})();
+function selfReload(go) { try { sessionStorage.setItem('selfReload', '1'); } catch {} go(); }
+function fitViewport() {
+  const vv = window.visualViewport;
+  const seen = Math.round(Math.min(innerHeight, vv ? vv.height : Infinity));
+  const good = store.get('goodHeightCamera', {});
+  const k = `${Math.max(screen.width, screen.height)}_${innerWidth > innerHeight ? 'L' : 'P'}`;
+  let h = seen;
+  if (!SELF_RELOAD) { if (good[k] !== seen) { good[k] = seen; store.set('goodHeightCamera', good); } }
+  else if (good[k] && seen > good[k]) h = good[k];
+  const v = (h / 100) + 'px';
+  if (document.documentElement.style.getPropertyValue('--vh') !== v) {
+    document.documentElement.style.setProperty('--vh', v);
+    fitSoon();
+  }
+}
+
+/* ---------- orologio, data, alba/tramonto ---------- */
+function tickClock() {
+  const d = new Date();
+  $('clock').textContent = hhmm(d);
+  $('date').textContent = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+function sunTimes(date, lat, lon) {
+  const rad = Math.PI / 180, J1970 = 2440588, J2000 = 2451545;
+  const d = date.valueOf() / 864e5 - 0.5 + J1970 - J2000;
+  const lw = -lon * rad, phi = lat * rad;
+  const n = Math.round(d - 0.0009 - lw / (2 * Math.PI));
+  const ds = 0.0009 + lw / (2 * Math.PI) + n;
+  const M = rad * (357.5291 + 0.98560028 * ds);
+  const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+  const L = M + C + rad * 102.9372 + Math.PI;
+  const dec = Math.asin(Math.sin(L) * Math.sin(rad * 23.4397));
+  const noon = J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const w = Math.acos((Math.sin(-0.833 * rad) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec)));
+  const set = J2000 + 0.0009 + (w + lw) / (2 * Math.PI) + n + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const toDate = (j) => new Date((j + 0.5 - J1970) * 864e5);
+  return { rise: toDate(noon - (set - noon)), set: toDate(set) };
+}
+function renderSun() {
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const { rise, set } = sunTimes(today, CONFIG.LAT, CONFIG.LON);
+  $('sunrise').textContent = hhmm(rise);
+  $('sunset').textContent = hhmm(set);
+}
+
+/* =====================================================================
+   FUORI: stazione MeteoNetwork tramite il Worker (come nel salotto)
+   ===================================================================== */
+let station = null, stationError = null;
+
+async function loadStation() {
+  try {
+    let d;
+    if (isDemo) d = demoStation();
+    else {
+      const r = await fetch(CONFIG.WORKER_URL + '?t=' + Date.now(), { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok || !j.data) throw new Error(j.error || `errore ${r.status}`);
+      d = j.data;
+    }
+    station = d; stationError = null;
+    recordHist(d);
+  } catch (e) {
+    stationError = e.message || String(e);
+  }
+  renderStation();
+}
+function demoStation() {
+  const iso = new Date(Date.now() - 4 * 60e3).toISOString().slice(0, 19).replace('T', ' ');
+  return { observation_time_utc: iso, station_code: 'demo', temperature: '9.4', current_tmin: '7.1',
+           current_tmax: '12.6', rh: '82', smlp: '1018.6' };
+}
+
+/* Storico di temperatura e pressione nel browser, con le STESSE chiavi della
+   pagina del salotto (tempHist_<stazione>, pressHist_<stazione>): se le due
+   pagine girano sullo stesso dispositivo condividono lo storico. */
+const TEMP_SPAN_MIN = 60, TEMP_MIN_SPAN = 30, TEMP_STEADY = 0.3;
+const PRESS_SPAN_MIN = 180, PRESS_MIN_SPAN = 60, PRESS_STEADY = 0.5;
+const pressValue = (d) => d ? num(d.smlp ?? d.mslp ?? d.pressure) : null;
+const code = () => (station && station.station_code) || 'staz';
+
+function recordHist(d) {
+  const t = parseUtc(d.observation_time_utc);
+  if (!t || isDemo) return;
+  const add = (key, val, keepH, field) => {
+    if (val === null) return;
+    let h = store.get(key, []);
+    if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), [field]: val });
+    store.set(key, h.filter(x => x.t > t.getTime() - keepH * 3600e3).sort((a, b) => a.t - b.t));
+  };
+  add('tempHist_' + code(), num(d.temperature), 3, 'v');
+  add('pressHist_' + code(), pressValue(d), 25, 'p');
+}
+// Variazione rispetto alla lettura più vicina a "spanMin" minuti prima (o null)
+function trend(key, field, obsMs, now, spanMin, minSpan) {
+  const target = obsMs - spanMin * 60e3;
+  const cand = store.get(key, []).filter(x => x.t <= obsMs - minSpan * 60e3 && x.t >= target - 30 * 60e3);
+  if (!cand.length || now === null) return null;
+  const ref = cand.reduce((a, b) => Math.abs(b.t - target) < Math.abs(a.t - target) ? b : a);
+  return { diff: now - ref[field], min: (obsMs - ref.t) / 60e3 };
+}
+
+function renderStation() {
+  const d = station;
+  const obs = d ? parseUtc(d.observation_time_utc) : null;
+  const old = !obs || (Date.now() - obs) / 60e3 > CONFIG.STALE_MIN;
+  $('tOut').classList.toggle('stale', old);
+  $('status').textContent = !obs ? (stationError ? 'Dati esterni non disponibili' : '')
+    : old ? `Dato esterno delle ${hhmm(obs)}` : stationError ? 'Aggiornamento non riuscito' : '';
+
+  if (!d || !obs || old) {
+    $('outTemp').innerHTML = '—<span class="u">°</span>';
+    $('outRh').textContent = '—'; $('outMin').textContent = 'min —'; $('outMax').textContent = 'max —';
+    $('outArrow').className.baseVal = 't-arrow hidden';
+    $('press').textContent = '—'; $('pressArrow').className.baseVal = 'p-arrow hidden'; $('pressDiff').textContent = '';
+    return;
+  }
+  const T = num(d.temperature), rh = num(d.rh), tmin = num(d.current_tmin), tmax = num(d.current_tmax);
+  $('outTemp').innerHTML = fmt(T) + '<span class="u">°</span>';
+  $('outRh').textContent = rh === null ? '—' : Math.round(rh) + '%';
+  $('outMin').textContent = 'min ' + (tmin === null ? '—' : fmt(tmin) + '°');
+  $('outMax').textContent = 'max ' + (tmax === null ? '—' : fmt(tmax) + '°');
+
+  // freccia della temperatura (ultima ora)
+  const tt = isDemo ? { diff: 0.8 } : trend('tempHist_' + code(), 'v', obs.getTime(), T, TEMP_SPAN_MIN, TEMP_MIN_SPAN);
+  const tdir = !tt ? 'hidden' : tt.diff >= TEMP_STEADY ? 'up' : tt.diff <= -TEMP_STEADY ? 'down' : 'flat';
+  $('outArrow').className.baseVal = 't-arrow ' + tdir;
+
+  // pressione + tendenza (ultime ~3 ore)
+  const p = pressValue(d);
+  $('press').textContent = p === null ? '—' : Math.round(p) + ' hPa';
+  const pt = isDemo ? { diff: 1.2, min: 180 } : (p === null ? null : trend('pressHist_' + code(), 'p', obs.getTime(), p, PRESS_SPAN_MIN, PRESS_MIN_SPAN));
+  const pdir = !pt ? 'hidden' : pt.diff >= PRESS_STEADY ? 'up' : pt.diff <= -PRESS_STEADY ? 'down' : 'flat';
+  $('pressArrow').className.baseVal = 'p-arrow ' + pdir;
+  const diffEl = $('pressDiff');
+  diffEl.className = 'p-diff num ' + pdir;
+  if (!pt) diffEl.textContent = '';
+  else {
+    const h = Math.max(1, Math.round(pt.min / 60));
+    diffEl.textContent = pdir === 'flat' ? `stabile · ${h}h` : `${pt.diff > 0 ? '+' : '−'}${fmt(Math.abs(pt.diff))} · ${h}h`;
+  }
+}
+
+/* =====================================================================
+   CAMERA: per ora dati INVENTATI (CONFIG.INDOOR_DEMO).
+   Quando arriverà il GW1200 qui leggeremo il sensore interno tramite il Worker.
+   I valori finti oscillano lentamente, così si vede la pagina "viva".
+   ===================================================================== */
+function readIndoor() {
+  if (CONFIG.INDOOR_DEMO || isDemo) {
+    const ph = Date.now() / (6 * 3600e3) * 2 * Math.PI;        // ciclo di 6 ore
+    return { temp: 20.4 + 0.6 * Math.sin(ph), rh: 52 + 5 * Math.sin(ph * 0.7 + 1), demo: true };
+  }
+  return null;   // sensore reale: da collegare
+}
+function comfort(t, rh) {
+  if (t === null || rh === null) return ['', '—'];
+  const [t0, t1] = CONFIG.COMFORT_T, [h0, h1] = CONFIG.COMFORT_RH;
+  if (t < t0 - 2) return ['bad', 'Fredda'];
+  if (t > t1 + 2) return ['bad', 'Calda'];
+  if (t < t0) return ['warn', 'Fresca'];
+  if (t > t1) return ['warn', 'Un po\' calda'];
+  if (rh < h0) return ['warn', 'Aria secca'];
+  if (rh > h1) return ['warn', 'Aria umida'];
+  return ['good', 'Comfort ideale'];
+}
+function renderIndoor() {
+  const r = readIndoor();
+  $('inDemo').hidden = !(r && r.demo);
+  const t = r ? r.temp : null, rh = r ? r.rh : null;
+  $('inTemp').innerHTML = fmt(t) + '<span class="u">°</span>';
+  $('inRh').textContent = rh === null ? '—' : Math.round(rh) + '%';
+  const [cls, txt] = comfort(t, rh);
+  $('inComfort').innerHTML = `<span class="dot ${cls}"></span>${txt}`;
+}
+
+/* =====================================================================
+   PREVISIONE DOMANI E DOPODOMANI (Visual Crossing, riserva Open-Meteo)
+   ===================================================================== */
+const VC_ICONS = {
+  'clear-day': '☀️', 'clear-night': '🌙', 'partly-cloudy-day': '⛅', 'partly-cloudy-night': '☁️',
+  'cloudy': '☁️', 'rain': '🌧️', 'showers-day': '🌦️', 'showers-night': '🌧️',
+  'thunder-rain': '⛈️', 'thunder-showers-day': '⛈️', 'thunder-showers-night': '⛈️',
+  'snow': '❄️', 'snow-showers-day': '🌨️', 'snow-showers-night': '🌨️', 'sleet': '🌨️',
+  'hail': '🌨️', 'fog': '🌫️', 'wind': '💨',
+};
+function wmoIcon(c) {
+  if (c === 0) return '☀️'; if (c <= 2) return '⛅'; if (c === 3) return '☁️'; if (c <= 48) return '🌫️';
+  if (c <= 67 || (c >= 80 && c <= 82)) return '🌧️'; if (c <= 77 || c === 85 || c === 86) return '❄️';
+  return '⛈️';
+}
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+async function forecastVisualCrossing() {
+  const u = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/' +
+    `${CONFIG.LAT},${CONFIG.LON}/${ymd(new Date())}/${ymd(new Date(Date.now() + 2 * 864e5))}` +
+    '?unitGroup=metric&include=days&elements=datetimeEpoch,precipprob,tempmax,tempmin,icon&contentType=json';
+  const r = await fetch(u, { cache: 'no-store' });
+  if (!r.ok) throw new Error('Visual Crossing errore ' + r.status);
+  const days = (await r.json()).days || [];
+  if (days.length < 3) throw new Error('Visual Crossing senza dati');
+  return days.slice(1, 3).map(d => ({ time: d.datetimeEpoch * 1000, icon: VC_ICONS[d.icon] || '☁️',
+    max: num(d.tempmax), min: num(d.tempmin), prob: num(d.precipprob) }));
+}
+async function forecastOpenMeteo() {
+  const u = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=3' +
+    '&timeformat=unixtime&timezone=auto';
+  const r = await fetch(u, { cache: 'no-store' });
+  if (!r.ok) throw new Error('Open-Meteo errore ' + r.status);
+  const dd = (await r.json()).daily;
+  return [1, 2].map(i => ({ time: dd.time[i] * 1000, icon: wmoIcon(dd.weather_code[i]),
+    max: num(dd.temperature_2m_max[i]), min: num(dd.temperature_2m_min[i]), prob: num(dd.precipitation_probability_max[i]) }));
+}
+const DAY_ABBR = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+async function loadForecast() {
+  let days = null;
+  if (isDemo) {
+    const t = Date.now();
+    days = [{ time: t + 864e5, icon: '🌦️', max: 12.3, min: 7.9, prob: 64 }, { time: t + 2 * 864e5, icon: '☀️', max: 14.8, min: 6.7, prob: 5 }];
+  } else {
+    try { days = await forecastVisualCrossing(); }
+    catch (e) { try { days = await forecastOpenMeteo(); } catch { days = null; } }
+  }
+  const deg = (v) => (v === null ? '—' : Math.round(v) + '°');
+  [0, 1].forEach(i => {
+    const d = days && days[i];
+    $('fc' + i).innerHTML = !d ? '<span class="s-k">Previsione n/d</span>' :
+      `<span class="s-k">${DAY_ABBR[new Date(d.time + 12 * 3600e3).getDay()]}</span>` +
+      `<span class="s-ic" aria-hidden="true">${d.icon}</span>` +
+      `<b class="num"><span class="lo">${deg(d.min)}</span> / <span class="hi">${deg(d.max)}</span></b>` +
+      `<span class="p num">💧${d.prob === null ? '—' : Math.round(d.prob) + '%'}</span>`;
+  });
+  fitSoon();
+}
+
+/* =====================================================================
+   NOTTE, ANTI BURN-IN, SCHERMO ACCESO
+   ===================================================================== */
+const toMin = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+let peekUntil = 0;
+function isNightTime() {
+  const f = params.get('night');                 // prove: ?night=1 / ?night=0
+  if (f === '1') return true;
+  if (f === '0') return false;
+  const d = new Date(), m = d.getHours() * 60 + d.getMinutes();
+  const a = toMin(CONFIG.NIGHT_FROM), b = toMin(CONFIG.NIGHT_TO);
+  return a > b ? (m >= a || m < b) : (m >= a && m < b);
+}
+function applyNight() {
+  const night = isNightTime() && Date.now() > peekUntil;
+  if (document.body.classList.contains('night') !== night) {
+    document.body.classList.toggle('night', night);
+    fitSoon();
+  }
+}
+// Di notte un tocco mostra la vista di giorno per qualche secondo
+document.addEventListener('pointerdown', () => {
+  if (document.body.classList.contains('night')) {
+    peekUntil = Date.now() + CONFIG.NIGHT_PEEK_S * 1000;
+    applyNight();
+    setTimeout(applyNight, CONFIG.NIGHT_PEEK_S * 1000 + 100);
+  }
+});
+
+/* Anti burn-in dell'OLED: ogni minuto sposto tutta la pagina di qualche pixel,
+   seguendo un giro di 9 posizioni. A occhio non si nota. */
+const SHIFTS = [[0, 0], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+let shiftIdx = 0;
+function pixelShift() {
+  shiftIdx = (shiftIdx + 1) % SHIFTS.length;
+  const [x, y] = SHIFTS[shiftIdx];
+  $('app').style.transform = `translate(calc(${x} * var(--vh)), calc(${y} * var(--vh)))`;
+}
+
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) { $('wl').title = 'Wake Lock non supportato'; return; }
+  if (wakeLock && !wakeLock.released) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    $('wl').classList.add('on');
+    wakeLock.addEventListener('release', () => $('wl').classList.remove('on'));
+  } catch { $('wl').classList.remove('on'); }
+}
+document.addEventListener('pointerdown', requestWakeLock);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { requestWakeLock(); loadStation(); }
+});
+$('fsBtn').addEventListener('click', async () => {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    } else await document.exitFullscreen();
+  } catch {}
+});
+
+/* Adattamento: se un valore non ci sta nel riquadro lo rimpicciolisco (come nel salotto) */
+function tileOverflows(t) {
+  const r = t.getBoundingClientRect(), m = 2;
+  for (const e of t.querySelectorAll('*')) {
+    const q = e.getBoundingClientRect();
+    if (!q.width && !q.height) continue;
+    if (q.right > r.right - m || q.left < r.left + m || q.bottom > r.bottom - m || q.top < r.top) return true;
+  }
+  return false;
+}
+let fitPending = false;
+function fitSoon() {
+  if (fitPending) return;
+  fitPending = true;
+  requestAnimationFrame(() => {
+    fitPending = false;
+    document.querySelectorAll('.tile').forEach(t => {
+      let k = 1; t.style.setProperty('--k', '1');
+      while (k > 0.56 && tileOverflows(t)) { k -= 0.05; t.style.setProperty('--k', k.toFixed(2)); }
+    });
+  });
+}
+
+/* =====================================================================
+   AVVIO E AGGIORNAMENTI
+   ===================================================================== */
+fitViewport();
+['resize', 'orientationchange', 'fullscreenchange'].forEach(ev => window.addEventListener(ev, fitViewport));
+if (window.visualViewport) visualViewport.addEventListener('resize', fitViewport);
+new MutationObserver(fitSoon).observe($('app'), { childList: true, subtree: true, characterData: true });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
+
+tickClock(); setInterval(tickClock, 1000);
+renderSun(); applyNight(); renderIndoor();
+loadStation(); loadForecast();
+setInterval(loadStation, CONFIG.REFRESH_MIN * 60e3);
+setInterval(loadForecast, CONFIG.FORECAST_MIN * 60e3);
+setInterval(() => { renderIndoor(); renderStation(); renderSun(); applyNight(); pixelShift(); fitViewport(); }, 60e3);
+setTimeout(() => selfReload(() => location.reload()), 24 * 3600e3);   // ricarica completa una volta al giorno
+
+// Aggiornamento automatico: come nel salotto, confronto APP_VERSION ogni 15 minuti
+async function checkForUpdate() {
+  if (location.protocol === 'file:' || isDemo) return;
+  try {
+    const r = await fetch(location.pathname + '?check=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const m = (await r.text()).match(/const APP_VERSION = '([^']+)'/);
+    if (!m || m[1] === APP_VERSION) return;
+    const q = new URLSearchParams(location.search); q.set('v', m[1]);
+    selfReload(() => location.replace(location.pathname + '?' + q));
+  } catch {}
+}
+setInterval(checkForUpdate, 15 * 60e3);
+setTimeout(checkForUpdate, 60e3);
+requestWakeLock();
+</script>
+</body>
+</html>

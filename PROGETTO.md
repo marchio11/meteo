@@ -25,6 +25,8 @@ caratteri grandi leggibili da lontano.
 | `manifest-phone.webmanifest` | App del **telefono**: verticale, con barra di stato, icone `icon-phone-192/512.png` (quadrato arrotondato stile Borealis). Lo sceglie uno script in testa a `index.html` quando il lato corto dello schermo è sotto 520 px. |
 | `icon-192.png`, `icon-512.png` | Icone dell'app sul tablet. |
 | `icon-phone-192.png`, `icon-phone-512.png` | Icone dell'app sul telefono (blu, angoli arrotondati trasparenti, `purpose: any` così il telefono non le ritaglia a cerchio). |
+| `camera.html` | Pagina per la **camera da letto** (Pixel 8 in orizzontale sulla basetta). Vedi la sezione "Camera (Pixel 8)". |
+| `manifest-camera.webmanifest` | App della camera: schermo intero, orizzontale, si apre su `camera.html`. |
 | `PROGETTO.md` | Questa nota. |
 
 ---
@@ -149,6 +151,21 @@ Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecch
 - App installata da Chrome (⋮ → Installa app / Aggiungi a schermata Home).
 - Schermo sempre acceso: Screen Wake Lock API (pallino verde; toccare lo schermo una volta all'avvio) + Opzioni sviluppatore → "Rimani attivo" con il caricatore collegato.
 - Luminosità adattiva attiva nelle impostazioni Display.
+
+---
+
+## Camera (Pixel 8)
+
+Pagina separata `camera.html` (indirizzo: https://meteo-marchionni.pages.dev/camera.html), aggiunta il 25/11/2026. Non tocca `index.html` e usa lo **stesso Worker** (stessa origine, quindi `ALLOWED_ORIGINS` non va cambiato).
+
+- **Layout (orizzontale, pensato per 914×411 px CSS):** a sinistra ora grande, data, alba/tramonto; al centro riquadro **Fuori** (temperatura con freccia della tendenza, umidità, min/max); a destra riquadro **Camera** (temperatura, umidità, giudizio di comfort). In basso una striscia con pressione e tendenza e la previsione di domani e dopodomani (Visual Crossing, riserva Open-Meteo).
+- **Dati della camera inventati** finché non c'è il GW1200: `CONFIG.INDOOR_DEMO: true` (valori che oscillano lentamente, etichetta "DEMO"). Da collegare al sensore interno tramite il Worker.
+- **Modalità notte** (`NIGHT_FROM`–`NIGHT_TO`, predefinito 22:30–07:00): niente riquadri né striscia, testo rosso tenue su nero, emoji spente. Un tocco mostra la vista di giorno per `NIGHT_PEEK_S` secondi. Prove: `?night=1` / `?night=0`.
+- **Anti burn-in (OLED):** sfondo nero puro, testo non bianco pieno, e ogni minuto la pagina si sposta di 1/100 dell'altezza in un giro di 9 posizioni (`pixelShift()`).
+- **Comfort:** `COMFORT_T` 17–22 °C e `COMFORT_RH` 40–60% → "Comfort ideale", altrimenti "Fresca", "Aria secca", "Aria umida"…
+- **Storico** di temperatura e pressione con le stesse chiavi del salotto (`tempHist_<stazione>`, `pressHist_<stazione>`); frecce dopo 30-60 minuti di pagina aperta. L'altezza memorizzata usa la chiave `goodHeightCamera`.
+- Come il salotto: `APP_VERSION` propria (da cambiare a ogni modifica di `camera.html`), aggiornamento automatico ogni 15 minuti, ricarica giornaliera, Wake Lock (pallino verde nella striscia). `?demo=1` rende finti anche i dati esterni.
+- **Sul Pixel:** aprire l'indirizzo in Chrome → ⋮ → Installa app; Impostazioni → Batteria → Ottimizzazione ricarica → Limita all'80%; Opzioni sviluppatore → Rimani attivo; luminosità adattiva attiva.
 
 ---
 
