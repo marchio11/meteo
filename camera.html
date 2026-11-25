@@ -50,7 +50,11 @@
   main { display: grid; grid-template-columns: 1fr 0.62fr 1fr; gap: var(--gap); min-height: 0; }
 
   /* ---------- Shiba al centro ---------- */
-  .dog { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+  .dog {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0;
+    background: var(--tile); border: 1px solid var(--line); border-radius: var(--radius);   /* stesso riquadro di Fuori e Camera */
+    padding: calc(2 * var(--vh)); transition: background 1.5s, border-color 1.5s;
+  }
   .dog img { flex: 1; min-height: 0; width: 100%; object-fit: contain; transition: opacity .8s; }
   .dog img[hidden] { display: none; }
   /* segnaposto finché non ci sono le immagini: cane + accessorio */
@@ -184,7 +188,7 @@
    ===================================================================== */
 // Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate).
-const APP_VERSION = '2026-11-25.3';
+const APP_VERSION = '2026-11-25.4';
 
 const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
