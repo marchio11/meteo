@@ -5,7 +5,8 @@
  *   - ECOWITT (il gateway GW1200 di casa, tramite il cloud ecowitt.net):
  *       temperatura e umidità esterne (sensore sul canale ECOWITT_OUT, predefinito ch1),
  *       minima e massima di oggi calcolate dal Worker,
- *       temperatura e umidità della camera (canale ECOWITT_ROOM, predefinito ch2) se il sensore c'è.
+ *       temperatura e umidità della camera (canale ECOWITT_ROOM, predefinito ch3) se il sensore c'è,
+ *       temperatura e umidità del salotto (sensore interno del gateway), con minima e massima di oggi.
  *   - METEONETWORK (stazione MAIN_STATION, predefinita mrc065 Celletta/Pentagono – Pesaro):
  *       vento, pioggia e pressione; e anche temperatura/umidità se Ecowitt non risponde.
  *
@@ -27,7 +28,7 @@
  *   ECOWITT_API_KEY  (Secret)  API Key di ecowitt.net
  *   ECOWITT_MAC      (Text)    MAC del GW1200, es. AA:BB:CC:DD:EE:FF
  *   ECOWITT_OUT      (Text, facoltativa)  sensore esterno: ch1 … ch8 oppure outdoor. Predefinito: ch1
- *   ECOWITT_ROOM     (Text, facoltativa)  sensore della camera: ch1 … ch8, oppure none. Predefinito: ch2
+ *   ECOWITT_ROOM     (Text, facoltativa)  sensore della camera: ch1 … ch8, oppure none. Predefinito: ch3
  * Legame (Settings → Bindings):
  *   METEO_KV         (KV namespace)  memoria condivisa
  *
@@ -80,12 +81,9 @@ export default {
 
     // 4) minima e massima di oggi dal sensore esterno Ecowitt (azzerate a mezzanotte)
     const out = ecoOutdoor(state.eco, now, env);
-    if (out) {
-      const day = localDay(out.time);
-      if (state.day !== day) { state.day = day; state.tmin = out.temp; state.tmax = out.temp; }
-      state.tmin = Math.min(state.tmin ?? out.temp, out.temp);
-      state.tmax = Math.max(state.tmax ?? out.temp, out.temp);
-    }
+    if (out) trackMinMax(state, 'out', out);
+    const indoor = ecoChannel(state.eco, 'indoor', now);   // sensore interno del gateway (salotto)
+    if (indoor) trackMinMax(state, 'in', indoor);
 
     const data = merge(state, out, now, env);
     data.errors = [mnw.error, eco.error].filter(Boolean);
@@ -95,6 +93,14 @@ export default {
     return ok(state.body, cors);
   },
 };
+
+// Minima e massima di oggi (si azzerano a mezzanotte, ora italiana)
+function trackMinMax(state, p, x) {
+  const day = localDay(x.time);
+  if (state[p + 'Day'] !== day) { state[p + 'Day'] = day; state[p + 'Min'] = x.temp; state[p + 'Max'] = x.temp; }
+  state[p + 'Min'] = Math.min(state[p + 'Min'] ?? x.temp, x.temp);
+  state[p + 'Max'] = Math.max(state[p + 'Max'] ?? x.temp, x.temp);
+}
 
 /* ---------------- unione dei dati ---------------- */
 
@@ -110,8 +116,8 @@ function merge(state, out, now, env) {
   if (out) {
     d.temperature = String(out.temp);
     d.rh = out.rh === null ? null : String(out.rh);
-    d.current_tmin = String(state.tmin);
-    d.current_tmax = String(state.tmax);
+    d.current_tmin = String(state.outMin);
+    d.current_tmax = String(state.outMax);
     d.observation_time_utc = utcString(out.time);
     d.temp_source = 'ecowitt';
   } else {
@@ -119,7 +125,15 @@ function merge(state, out, now, env) {
   }
   if (!d.station_code) d.station_code = String(env.MAIN_STATION || 'mrc065').toLowerCase();
 
-  const room = ecoChannel(state.eco, env.ECOWITT_ROOM || 'ch2', now);
+  const indoor = ecoChannel(state.eco, 'indoor', now);
+  if (indoor) {
+    d.indoor_temperature = String(indoor.temp);
+    d.indoor_rh = indoor.rh === null ? null : String(indoor.rh);
+    d.indoor_tmin = String(state.inMin);
+    d.indoor_tmax = String(state.inMax);
+    d.indoor_observation_time_utc = utcString(indoor.time);
+  }
+  const room = ecoChannel(state.eco, env.ECOWITT_ROOM || 'ch3', now);
   if (room) {
     d.room_temperature = String(room.temp);
     d.room_rh = room.rh === null ? null : String(room.rh);
@@ -148,11 +162,11 @@ async function getEcowitt(env) {
   return { data: j.data };
 }
 
-// Temperatura e umidità di un sensore: 'outdoor' oppure 'ch1' … 'ch8'
+// Temperatura e umidità di un sensore: 'indoor' (gateway), 'outdoor' oppure 'ch1' … 'ch8'
 function ecoChannel(eco, which, now) {
   if (!eco || !which || which === 'none') return null;
   const w = String(which).toLowerCase().trim();
-  const block = w === 'outdoor' ? eco.outdoor : eco['temp_and_humidity_ch' + w.replace(/\D/g, '')];
+  const block = w === 'outdoor' || w === 'indoor' ? eco[w] : eco['temp_and_humidity_ch' + w.replace(/\D/g, '')];
   if (!block || !block.temperature) return null;
   const temp = num(block.temperature.value);
   const time = Number(block.temperature.time) * 1000;
@@ -173,7 +187,8 @@ async function debug(env, cors) {
     errore: eco.error || null,
     sensori_trovati: eco.data ? Object.keys(eco.data) : [],
     esterno_usato: ecoOutdoor(eco.data, now, env),
-    camera_usata: ecoChannel(eco.data, env.ECOWITT_ROOM || 'ch2', now),
+    salotto_usato: ecoChannel(eco.data, 'indoor', now),
+    camera_usata: ecoChannel(eco.data, env.ECOWITT_ROOM || 'ch3', now),
     dati_ecowitt: eco.data || null,
   }, 200, cors);
 }

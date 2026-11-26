@@ -40,7 +40,7 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 
 **Metà sinistra** (griglia a 6 colonne; tutti i titoli dei riquadri centrati):
 
-1. Temperatura attuale, freccia della tendenza dell'ultima ora (↗ arancione in aumento, ↘ azzurra in diminuzione, → grigia stabile) e massima e minima del giorno (tutta la larghezza)
+1. Due riquadri affiancati (dal 26/11/2026): **Fuori** a sinistra e **Salotto** a destra (sensore interno del gateway). In ciascuno la temperatura con la freccia della tendenza dell'ultima ora (↗ arancione in aumento, ↘ azzurra in diminuzione, → grigia stabile) e sotto, in piccolo, massima e minima di oggi
 2. Umidità | Pioggia oggi (con ultima ora e intensità) | Vento (velocità, freccia, raffica e direzione) — un terzo di larghezza ciascuno
 3. Pressione (valore in hPa, freccia verde ↑ in aumento, rossa ↓ in diminuzione, grigia ↔ stabile, variazione "+1,2 in 3 ore" e mini grafico a barre: −24h, −18h, −12h, −9h, −6h, −3h, Ora; la barra "Ora" prende il colore della freccia) | Prossimi giorni (domani e dopodomani: sigla DOM/LUN…, icona, **minima / massima**, 💧 probabilità di pioggia)
 4. Striscia alba/tramonto: ☀️ Alba a sinistra, 🌙 Tramonto a destra, senza separatori
@@ -61,8 +61,9 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 | Dato | Fonte | Note |
 |---|---|---|
 | Temperatura, umidità, minima/massima di oggi | **Stazione di casa: Ecowitt GW1200**, sensore esterno sul canale 1, tramite il cloud ecowitt.net e il Worker (dal 26/11/2026) | Min/max calcolate dal Worker (si azzerano a mezzanotte, ora italiana): il primo giorno partono dal momento dell'attivazione. Se Ecowitt non risponde si torna a MeteoNetwork. |
+| Temperatura del salotto (riquadro "Salotto" del tablet), minima/massima di oggi | **Ecowitt**, sensore interno del gateway GW1200 (campi `indoor_*` dal Worker) | Freccia della tendenza con storico nella chiave `inHist_salotto`. |
 | Vento, pioggia, pressione | **MeteoNetwork, stazione `mrc065` Celletta/Pentagono (Pesaro)**, tramite il Worker | ~3-4 km da casa. Licenza CC BY 4.0. Il vento ha un suo orario (`wind_observation_time_utc`): se è vecchio viene nascosto. |
-| Temperatura e umidità della camera (`camera.html`) | **Ecowitt**, canale `ECOWITT_ROOM` (predefinito ch2) | Finché il sensore non c'è: valori finti con etichetta DEMO (`INDOOR_DEMO`). |
+| Temperatura e umidità della camera (`camera.html`) | **Ecowitt**, canale `ECOWITT_ROOM` (predefinito ch3, dove è il termometro della camera) | Finché il sensore non c'è: valori finti con etichetta DEMO (`INDOOR_DEMO`). |
 | Barre orarie pioggia, "Pioggia tra X minuti", "fino alle…" | **Visual Crossing** (gratis, senza chiave) | Solo dati orari nel piano gratuito. |
 | Previsione prossimi 2 giorni | **Visual Crossing** (stessa richiesta delle barre) | Icona, tempmin, tempmax, precipprob. |
 | Riserva se Visual Crossing non risponde | **Open-Meteo** | Orario + giornaliero. CC BY 4.0. |
@@ -101,7 +102,7 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 | `ECOWITT_API_KEY` | Secret | API Key di ecowitt.net |
 | `ECOWITT_MAC` | Text | MAC del GW1200 (app Ecowitt → dispositivo → informazioni) |
 | `ECOWITT_OUT` | Text, facoltativa | Sensore esterno: `ch1`…`ch8` oppure `outdoor`. Predefinito `ch1` |
-| `ECOWITT_ROOM` | Text, facoltativa | Sensore della camera: `ch1`…`ch8` oppure `none`. Predefinito `ch2` |
+| `ECOWITT_ROOM` | Text, facoltativa | Sensore della camera: `ch1`…`ch8` oppure `none`. Predefinito `ch3` |
 | **Legame** `METEO_KV` | KV namespace (Settings → Bindings) | Memoria condivisa tra le copie del Worker: le API vengono chiamate al massimo una volta ogni 5 minuti (risolve gli errori 429 "troppe richieste" di MeteoNetwork). Senza KV il Worker funziona lo stesso, con la sola memoria locale. |
 
 Prova del Worker: `…workers.dev/?debug=1` mostra se Ecowitt e la KV sono configurati, quali sensori arrivano e quali dati vengono usati (mai le chiavi).

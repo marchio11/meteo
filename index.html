@@ -99,7 +99,7 @@
   .sub { font-size: calc(2.7 * var(--vh)); color: var(--muted); margin-top: calc(1 * var(--vh)); line-height: 1.35; white-space: nowrap; }
   .sub b { color: var(--text); font-weight: 600; }
 
-  .t-temp { grid-column: 1 / -1; }
+  .t-temp { grid-column: span 3; }   /* due riquadri affiancati: Fuori a sinistra, Salotto a destra */
   .t-third { grid-column: span 2; padding-left: 1.1vw; padding-right: 1.1vw; }
   .t-half { grid-column: span 3; }
   .t-third .val { font-size: calc(7.4 * var(--vh)); }
@@ -134,8 +134,14 @@
   .p-bar.now i { background: var(--muted); }
   .p-bar.now.up i { background: var(--ok); }
   .p-bar.now.down i { background: var(--danger); }
-  .temp-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: .8vw; min-height: 0; }
-  .t-temp .val { font-size: calc(16 * var(--vh)); margin-top: 0; }
+  .temp-row { flex: 1; display: flex; align-items: center; justify-content: center; gap: .8vw; min-height: 0; }
+  .t-temp .val { font-size: calc(13.5 * var(--vh)); margin-top: 0; }
+  .t-temp.stale-in .val, .t-temp.stale-in .mm-row { opacity: .35; }
+  /* minima e massima in piccolo sotto la temperatura */
+  .mm-row { display: flex; justify-content: center; align-items: baseline; gap: 2.4vw; font-size: calc(3.6 * var(--vh)); font-weight: 700; white-space: nowrap; }
+  .mm-row .k { font-size: .62em; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; margin-right: .5vw; }
+  .mm-row .max { color: var(--hot); }
+  .mm-row .min { color: var(--cold); }
   /* Freccia della tendenza della temperatura (ultima ora): ↗ arancione in aumento,
      ↘ azzurra in diminuzione, → grigia stabile */
   .t-arrow { width: calc(4.6 * var(--vh)); height: calc(4.6 * var(--vh)); flex: none; transition: transform .6s; }
@@ -325,17 +331,25 @@
       <div class="notice" id="notice"><b id="noticeTitle"></b><span id="noticeText"></span></div>
       <div class="tiles">
         <div class="tile t-temp" data-st>
-          <div class="label">Temperatura</div>
+          <div class="label">Fuori</div>
           <div class="temp-row">
             <div class="val num" id="temp">—<span class="u">°C</span></div>
             <svg class="t-arrow hidden" id="tempArrow" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
             </svg>
-            <div class="minmax">
-              <div class="mm max num"><span class="k">Max</span><span id="tmax">—</span></div>
-              <div class="mm min num"><span class="k">Min</span><span id="tmin">—</span></div>
-            </div>
           </div>
+          <div class="mm-row num"><span class="max"><span class="k">Max</span><span id="tmax">—</span></span><span class="min"><span class="k">Min</span><span id="tmin">—</span></span></div>
+        </div>
+
+        <div class="tile t-temp" id="tIn">
+          <div class="label">Salotto</div>
+          <div class="temp-row">
+            <div class="val num" id="inTemp">—<span class="u">°C</span></div>
+            <svg class="t-arrow hidden" id="inArrow" viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="mm-row num"><span class="max"><span class="k">Max</span><span id="inTmax">—</span></span><span class="min"><span class="k">Min</span><span id="inTmin">—</span></span></div>
         </div>
 
         <div class="tile t-third" data-st>
@@ -421,7 +435,7 @@
 <div class="info-panel" id="infoPanel" role="dialog" aria-label="Fonti dei dati">
   <h3>Fonti dei dati</h3>
   <ul>
-    <li><b>Stazione di casa (Ecowitt GW1200)</b> <span>– temperatura, umidità, minima e massima</span></li>
+    <li><b>Stazione di casa (Ecowitt GW1200)</b> <span>– temperatura, umidità, minima e massima esterne e del salotto</span></li>
     <li><b>MeteoNetwork</b> <span>– vento, pioggia e pressione dalla stazione Celletta/Pentagono, Pesaro; anche temperatura e umidità se la stazione di casa non risponde (licenza CC BY 4.0)</span></li>
     <li><b>Visual Crossing</b> <span>– previsioni orarie e dei prossimi giorni</span></li>
     <li><b>Open-Meteo</b> <span>– previsioni di riserva (licenza CC BY 4.0)</span></li>
@@ -468,7 +482,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-26.1';
+const APP_VERSION = '2026-11-26.2';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -642,6 +656,7 @@ async function loadStation() {
     recordRain(d);
     recordPressure(d);
     recordTemp(d);
+    recordIndoor(d);
   } catch (e) {
     stationError = e.message || String(e);
   }
@@ -740,6 +755,7 @@ function blankStation() {
 }
 
 function renderStation() {
+  renderIndoor();   // il salotto ha un suo orario: lo aggiorno sempre
   const d = station;
   const obs = d ? parseUtc(d.observation_time_utc) : null;
 
@@ -828,6 +844,28 @@ const TEMP_SPAN_MIN = 60, TEMP_MIN_SPAN = 30, TEMP_STEADY = 0.3;
 function tempKey() {
   return 'tempHist_' + ((station && station.station_code) || 'staz');
 }
+/* SALOTTO: sensore interno del gateway Ecowitt (campi indoor_* dal Worker),
+   con la sua freccia (storico nella chiave inHist_salotto) e minima/massima di oggi. */
+const IN_KEY = 'inHist_salotto';
+function recordIndoor(d) {
+  const t = parseUtc(d.indoor_observation_time_utc), v = num(d.indoor_temperature);
+  if (!t || v === null || (DEMO && DEMO !== 'off')) return;
+  let h = store.get(IN_KEY, []);
+  if (!h.length || h[h.length - 1].t !== t.getTime()) h.push({ t: t.getTime(), v });
+  store.set(IN_KEY, h.filter(x => x.t > t.getTime() - 3 * 3600e3).sort((a, b) => a.t - b.t));
+}
+function renderIndoor() {
+  const d = station, t = d ? parseUtc(d.indoor_observation_time_utc) : null;
+  const fresh = !!t && (Date.now() - t) / 60e3 <= CONFIG.STALE_MIN;
+  const T = fresh ? num(d.indoor_temperature) : null;
+  $('tIn').classList.toggle('stale-in', !fresh);
+  setVal('inTemp', fmt(T), '°C');
+  const mn = fresh ? num(d.indoor_tmin) : null, mx = fresh ? num(d.indoor_tmax) : null;
+  $('inTmax').textContent = mx === null ? '—' : fmt(mx) + '°';
+  $('inTmin').textContent = mn === null ? '—' : fmt(mn) + '°';
+  if (T === null) $('inArrow').className.baseVal = 't-arrow hidden';
+  else renderTempTrend(T, t, 'inArrow', IN_KEY, -0.2);
+}
 function recordTemp(d) {
   const t = parseUtc(d.observation_time_utc), v = num(d.temperature);
   if (!t || v === null || (DEMO && DEMO !== 'off')) return;
@@ -836,13 +874,13 @@ function recordTemp(d) {
   h = h.filter(x => x.t > t.getTime() - 3 * 3600e3).sort((a, b) => a.t - b.t);
   store.set(tempKey(), h);
 }
-function renderTempTrend(T, obs) {
-  const arrow = $('tempArrow');
+function renderTempTrend(T, obs, arrowId = 'tempArrow', key = tempKey(), demoDiff = DEMO === 'raining' ? -1.4 : 0.8) {
+  const arrow = $(arrowId);
   let diff = null;
-  if (DEMO && DEMO !== 'off') diff = DEMO === 'raining' ? -1.4 : 0.8;
+  if (DEMO && DEMO !== 'off') diff = demoDiff;
   else if (T !== null) {
     const obsMs = obs.getTime(), target = obsMs - TEMP_SPAN_MIN * 60e3;
-    const cand = store.get(tempKey(), []).filter(x => x.t <= obsMs - TEMP_MIN_SPAN * 60e3 && x.t >= target - 20 * 60e3);
+    const cand = store.get(key, []).filter(x => x.t <= obsMs - TEMP_MIN_SPAN * 60e3 && x.t >= target - 20 * 60e3);
     if (cand.length) diff = T - cand.reduce((a, b) => Math.abs(b.t - target) < Math.abs(a.t - target) ? b : a).v;
   }
   const dir = diff === null ? 'hidden' : diff >= TEMP_STEADY ? 'up' : diff <= -TEMP_STEADY ? 'down' : 'flat';
@@ -943,6 +981,7 @@ function demoStation() {
     observation_time_utc: iso, rain_observation_time_utc: iso, temperature: '9.4', current_tmin: '7.1', current_tmax: '12.6',
     rh: '82', daily_rain: '8.9', rain_rate: DEMO === 'raining' ? '3.2' : '0.0', wind_speed: DEMO === 'calm' ? null : '7.2', wind_gust: '19.3',
     wind_direction_degree: '292', wind_direction: 'WNW', smlp: DEMO === 'raining' ? '1006.3' : '1018.6',
+    indoor_temperature: '21.3', indoor_rh: '48', indoor_tmin: '19.8', indoor_tmax: '21.9', indoor_observation_time_utc: iso,
   };
 }
 
