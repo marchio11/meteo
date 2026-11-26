@@ -484,7 +484,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-26.3';
+const APP_VERSION = '2026-11-26.4';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -1433,10 +1433,14 @@ let wakeLock = null;
 async function requestWakeLock() {
   if (!('wakeLock' in navigator)) { $('wl').title = 'Wake Lock non supportato'; return; }
   if (wakeLock && !wakeLock.released) return;
+  if (document.visibilityState !== 'visible') return;
   try {
     wakeLock = await navigator.wakeLock.request('screen');
     $('wl').classList.add('on'); $('wl').title = 'Schermo sempre acceso: attivo';
-    wakeLock.addEventListener('release', () => { $('wl').classList.remove('on'); $('wl').title = 'Schermo sempre acceso: non attivo'; });
+    wakeLock.addEventListener('release', () => {
+      $('wl').classList.remove('on'); $('wl').title = 'Schermo sempre acceso: non attivo';
+      setTimeout(requestWakeLock, 1500);   // Chrome può revocarlo in silenzio: lo richiedo di nuovo
+    });
   } catch (e) {
     $('wl').classList.remove('on'); $('wl').title = 'Tocca lo schermo per tenerlo acceso';
   }
@@ -1520,7 +1524,7 @@ initMap();
 refreshAll();
 setInterval(() => { lastRefresh = 0; refreshAll(); }, CONFIG.REFRESH_MIN * 60e3);
 setInterval(loadRadar, RADAR_REFRESH_MIN * 60e3);              // il radar DPC si aggiorna ogni 5 minuti
-setInterval(() => { fitViewport(); renderStation(); renderAlert(); renderSun(); }, 30e3);   // età dati, "tra X minuti", alba/tramonto
+setInterval(() => { fitViewport(); renderStation(); renderAlert(); renderSun(); requestWakeLock(); }, 30e3);   // + schermo acceso, se revocato   // età dati, "tra X minuti", alba/tramonto
 renderSun();
 setTimeout(() => selfReload(() => location.reload()), 24 * 3600e3);              // ricarica completa 1 volta al giorno
 

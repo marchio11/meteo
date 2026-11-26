@@ -193,7 +193,7 @@
    ===================================================================== */
 // Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate).
-const APP_VERSION = '2026-11-26.1';
+const APP_VERSION = '2026-11-26.2';
 
 const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
@@ -601,14 +601,45 @@ function pixelShift() {
 }
 
 let wakeLock = null;
+/* Schermo sempre acceso. Chrome può revocare il blocco in silenzio (risparmio
+   energetico, finestre di sistema, ricarica della pagina…): lo richiedo di nuovo
+   subito dopo una revoca e comunque ogni minuto (vedi setInterval più sotto).
+   Ogni evento finisce in un piccolo registro: aprire la pagina con ?diag=1 per vederlo. */
+function wlLog(msg) {
+  const log = store.get('wlLog', []);
+  log.push({ t: Date.now(), msg });
+  store.set('wlLog', log.slice(-30));
+  if (params.get('diag') === '1') renderWlLog();
+}
+function renderWlLog() {
+  let box = $('wlDiag');
+  if (!box) {
+    box = document.createElement('div'); box.id = 'wlDiag';
+    box.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.85);color:#9fb3c8;font:12px/1.4 system-ui;padding:8px 10px;border:1px solid #243042;border-radius:8px;max-height:90vh;overflow:auto';
+    document.body.appendChild(box);
+  }
+  const f = (t) => new Date(t).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  box.innerHTML = '<b>Schermo sempre acceso – registro</b><br>' + store.get('wlLog', []).slice().reverse().map(x => `${f(x.t)} · ${x.msg}`).join('<br>');
+}
+let wlFails = 0;
 async function requestWakeLock() {
   if (!('wakeLock' in navigator)) { $('wl').title = 'Wake Lock non supportato'; return; }
   if (wakeLock && !wakeLock.released) return;
+  if (document.visibilityState !== 'visible') return;
   try {
     wakeLock = await navigator.wakeLock.request('screen');
     $('wl').classList.add('on');
-    wakeLock.addEventListener('release', () => $('wl').classList.remove('on'));
-  } catch { $('wl').classList.remove('on'); }
+    if (wlFails) wlLog(`ripreso dopo ${wlFails} tentativi falliti`); else wlLog('attivo');
+    wlFails = 0;
+    wakeLock.addEventListener('release', () => {
+      $('wl').classList.remove('on');
+      wlLog(`revocato (pagina ${document.visibilityState === 'visible' ? 'visibile' : 'nascosta'})`);
+      setTimeout(requestWakeLock, 1500);   // se la pagina è ancora visibile, lo richiedo subito
+    });
+  } catch (e) {
+    $('wl').classList.remove('on');
+    if (!wlFails++) wlLog('rifiutato: ' + ((e && e.message) || e));
+  }
 }
 document.addEventListener('pointerdown', requestWakeLock);
 document.addEventListener('visibilitychange', () => {
@@ -651,7 +682,8 @@ renderSun(); applyNight(); renderIndoor(); renderDog();
 loadStation(); loadForecast();
 setInterval(loadStation, CONFIG.REFRESH_MIN * 60e3);
 setInterval(loadForecast, CONFIG.FORECAST_MIN * 60e3);
-setInterval(() => { renderIndoor(); renderStation(); renderSun(); applyNight(); renderDog(); pixelShift(); fitViewport(); }, 60e3);
+setInterval(() => { renderIndoor(); renderStation(); renderSun(); applyNight(); renderDog(); pixelShift(); fitViewport(); requestWakeLock(); }, 60e3);
+if (params.get('diag') === '1') renderWlLog();
 setTimeout(() => selfReload(() => location.reload()), 24 * 3600e3);   // ricarica completa una volta al giorno
 
 // Aggiornamento automatico: come nel salotto, confronto APP_VERSION ogni 15 minuti

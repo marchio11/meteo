@@ -177,6 +177,7 @@ Pagina separata `camera.html` (indirizzo: https://meteo-marchionni.pages.dev/cam
 - **Comfort:** `COMFORT_T` 17–22 °C e `COMFORT_RH` 40–60% → "Comfort ideale", altrimenti "Fresca", "Aria secca", "Aria umida"…
 - **Storico** di temperatura e pressione con le stesse chiavi del salotto (`tempHist_<stazione>`, `pressHist_<stazione>`); frecce dopo 30-60 minuti di pagina aperta. L'altezza memorizzata usa la chiave `goodHeightCamera`.
 - Come il salotto: `APP_VERSION` propria (da cambiare a ogni modifica di `camera.html`), aggiornamento automatico ogni 15 minuti, ricarica giornaliera, Wake Lock (pallino verde nella striscia). `?demo=1` rende finti anche i dati esterni.
+- **Schermo sempre acceso più robusto** (26/11/2026, anche nel salotto): Chrome può revocare il Wake Lock in silenzio (risparmio energetico, finestre di sistema, ricariche della pagina). Le pagine lo richiedono di nuovo 1,5 s dopo una revoca e comunque a ogni giro del timer (1 min camera, 30 s salotto). Sul Pixel ogni evento va in un registro (`localStorage`, chiave `wlLog`, ultimi 30): aprire `camera?diag=1` per vederlo.
 - **Sul Pixel:** aprire l'indirizzo in Chrome → ⋮ → Installa app; Impostazioni → Batteria → Ottimizzazione ricarica → Limita all'80%; Opzioni sviluppatore → Rimani attivo; luminosità adattiva attiva.
 
 ---
