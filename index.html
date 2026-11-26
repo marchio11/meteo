@@ -135,7 +135,11 @@
   .p-bar.now.up i { background: var(--ok); }
   .p-bar.now.down i { background: var(--danger); }
   .temp-row { flex: 1; display: flex; align-items: center; justify-content: center; gap: .8vw; min-height: 0; }
-  .t-temp .val { font-size: calc(13.5 * var(--vh)); margin-top: 0; }
+  .t-temp .val { font-size: calc(16 * var(--vh)); margin-top: 0; display: flex; align-items: flex-start; }
+  /* freccia della tendenza sopra il °C: risparmia spazio in larghezza */
+  .u-stack { display: inline-flex; flex-direction: column; align-items: center; margin-left: .06em; padding-top: .08em; gap: .04em; }
+  .u-stack .u { margin-left: 0; font-size: .34em; }
+  .u-stack .t-arrow { width: .26em; height: .26em; }
   .t-temp.stale-in .val, .t-temp.stale-in .mm-row { opacity: .35; }
   /* minima e massima in piccolo sotto la temperatura */
   .mm-row { display: flex; justify-content: center; align-items: baseline; gap: 2.4vw; font-size: calc(3.6 * var(--vh)); font-weight: 700; white-space: nowrap; }
@@ -333,10 +337,9 @@
         <div class="tile t-temp" data-st>
           <div class="label">Fuori</div>
           <div class="temp-row">
-            <div class="val num" id="temp">—<span class="u">°C</span></div>
-            <svg class="t-arrow hidden" id="tempArrow" viewBox="0 0 100 100" aria-hidden="true">
+            <div class="val num"><span id="temp">—</span><span class="u-stack"><svg class="t-arrow hidden" id="tempArrow" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
-            </svg>
+            </svg><span class="u">°C</span></span></div>
           </div>
           <div class="mm-row num"><span class="max"><span class="k">Max</span><span id="tmax">—</span></span><span class="min"><span class="k">Min</span><span id="tmin">—</span></span></div>
         </div>
@@ -344,10 +347,9 @@
         <div class="tile t-temp" id="tIn">
           <div class="label">Salotto</div>
           <div class="temp-row">
-            <div class="val num" id="inTemp">—<span class="u">°C</span></div>
-            <svg class="t-arrow hidden" id="inArrow" viewBox="0 0 100 100" aria-hidden="true">
+            <div class="val num"><span id="inTemp">—</span><span class="u-stack"><svg class="t-arrow hidden" id="inArrow" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
-            </svg>
+            </svg><span class="u">°C</span></span></div>
           </div>
           <div class="mm-row num"><span class="max"><span class="k">Max</span><span id="inTmax">—</span></span><span class="min"><span class="k">Min</span><span id="inTmin">—</span></span></div>
         </div>
@@ -482,7 +484,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-26.2';
+const APP_VERSION = '2026-11-26.3';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -744,7 +746,7 @@ function showNotice(title, text) {
 }
 function blankStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
-  setVal('temp', '—', '°C'); $('tempArrow').className.baseVal = 't-arrow hidden'; $('tmax').textContent = '—'; $('tmin').textContent = '—';
+  $('temp').textContent = '—'; $('tempArrow').className.baseVal = 't-arrow hidden'; $('tmax').textContent = '—'; $('tmin').textContent = '—';
   setVal('rh', '—', '%'); $('rhBar').style.width = '0';
   $('rainDay').classList.remove('na');
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
@@ -779,7 +781,7 @@ function renderStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.remove('stale'));
 
   const T = num(d.temperature), tmin = num(d.current_tmin), tmax = num(d.current_tmax);
-  setVal('temp', fmt(T), '°C');
+  $('temp').textContent = fmt(T);
   renderTempTrend(T, obs);
   $('tmax').textContent = tmax === null ? '—' : fmt(tmax) + '°';
   $('tmin').textContent = tmin === null ? '—' : fmt(tmin) + '°';
@@ -859,7 +861,7 @@ function renderIndoor() {
   const fresh = !!t && (Date.now() - t) / 60e3 <= CONFIG.STALE_MIN;
   const T = fresh ? num(d.indoor_temperature) : null;
   $('tIn').classList.toggle('stale-in', !fresh);
-  setVal('inTemp', fmt(T), '°C');
+  $('inTemp').textContent = fmt(T);
   const mn = fresh ? num(d.indoor_tmin) : null, mx = fresh ? num(d.indoor_tmax) : null;
   $('inTmax').textContent = mx === null ? '—' : fmt(mx) + '°';
   $('inTmin').textContent = mn === null ? '—' : fmt(mn) + '°';
@@ -1488,6 +1490,10 @@ function fitTiles() {
     t.style.setProperty('--k', '1');
     while (k > 0.56 && tileOverflows(t)) { k -= 0.05; t.style.setProperty('--k', k.toFixed(2)); }
   });
+  // Fuori e Salotto con la stessa grandezza: uso la riduzione maggiore per entrambi
+  const tt = [...document.querySelectorAll('.tiles .t-temp')];
+  const kMin = Math.min(...tt.map(t => parseFloat(t.style.getPropertyValue('--k')) || 1));
+  tt.forEach(t => t.style.setProperty('--k', kMin.toFixed(2)));
 }
 let fitPending = false;
 function fitSoon() {
