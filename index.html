@@ -421,7 +421,8 @@
 <div class="info-panel" id="infoPanel" role="dialog" aria-label="Fonti dei dati">
   <h3>Fonti dei dati</h3>
   <ul>
-    <li><b>MeteoNetwork</b> <span>– dati della stazione Celletta/Pentagono, Pesaro (licenza CC BY 4.0)</span></li>
+    <li><b>Stazione di casa (Ecowitt GW1200)</b> <span>– temperatura, umidità, minima e massima</span></li>
+    <li><b>MeteoNetwork</b> <span>– vento, pioggia e pressione dalla stazione Celletta/Pentagono, Pesaro; anche temperatura e umidità se la stazione di casa non risponde (licenza CC BY 4.0)</span></li>
     <li><b>Visual Crossing</b> <span>– previsioni orarie e dei prossimi giorni</span></li>
     <li><b>Open-Meteo</b> <span>– previsioni di riserva (licenza CC BY 4.0)</span></li>
     <li><b>Radar-DPC, Dipartimento della Protezione Civile</b> <span>– radar delle precipitazioni (licenza CC BY-SA 4.0)</span></li>
@@ -467,7 +468,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-25.4';
+const APP_VERSION = '2026-11-26.1';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -783,7 +784,17 @@ function renderStation() {
   $('rainHour').textContent = rd === null ? '—' : rlh === null ? lastHourPending() : fmt(rlh) + ' mm';
   $('rainRate').textContent = rr === null ? '—' : fmt(rr) + ' mm/h';
 
-  const ws = num(d.wind_speed), wg = num(d.wind_gust), wd = num(d.wind_direction_degree);
+  // Il vento arriva sempre da MeteoNetwork (la stazione di casa misura solo temperatura e umidità):
+  // ha un suo orario, e se è vecchio non lo mostro.
+  const wObs = parseUtc(d.wind_observation_time_utc || d.observation_time_utc);
+  const windFresh = !!wObs && (Date.now() - wObs) / 60e3 <= CONFIG.STALE_MIN;
+  const ws = windFresh ? num(d.wind_speed) : null, wg = windFresh ? num(d.wind_gust) : null, wd = windFresh ? num(d.wind_direction_degree) : null;
+  if (!windFresh) {
+    setVal('wind', '—', 'km/h'); $('wind').classList.remove('calm'); $('windArrow').classList.add('hidden');
+    $('gust').textContent = '—'; $('windDir').textContent = '—';
+    renderPressure(d, obs);
+    return;
+  }
   // La stazione mrc065 non invia la velocità quando l'anemometro è fermo: campo vuoto = calma
   const calm = ws === null;
   if (calm) setVal('wind', 'Calma'); else setVal('wind', Math.round(ws), 'km/h');

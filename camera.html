@@ -193,7 +193,7 @@
    ===================================================================== */
 // Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate).
-const APP_VERSION = '2026-11-25.6';
+const APP_VERSION = '2026-11-26.1';
 
 const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
@@ -210,8 +210,8 @@ const CONFIG = {
   NIGHT_TO: '07:00',
   NIGHT_PEEK_S: 30,
 
-  // Sensore della camera: finché non c'è il GW1200 i valori sono INVENTATI.
-  INDOOR_DEMO: true,
+  // Sensore della camera: se il Worker non passa ancora il sensore (canale ECOWITT_ROOM)…
+  INDOOR_DEMO: true,        // se il sensore vero non risponde: true = valori finti (DEMO), false = trattini
 
   // Shiba: soglie per scegliere il vestito (temperatura esterna)
   DOG_HOT: 27,        // da qui in su: occhiali da sole e costume
@@ -316,6 +316,7 @@ async function loadStation() {
     stationError = e.message || String(e);
   }
   renderStation();
+  renderIndoor();
   renderDog();
 }
 function demoStation() {
@@ -395,11 +396,16 @@ function renderStation() {
 }
 
 /* =====================================================================
-   CAMERA: per ora dati INVENTATI (CONFIG.INDOOR_DEMO).
-   Quando arriverà il GW1200 qui leggeremo il sensore interno tramite il Worker.
-   I valori finti oscillano lentamente, così si vede la pagina "viva".
+   CAMERA: sensore Ecowitt della camera, passato dal Worker
+   (room_temperature, room_rh; canale ECOWITT_ROOM nelle impostazioni del Worker).
+   Finché il sensore non c'è, e se CONFIG.INDOOR_DEMO è true, mostro valori
+   INVENTATI che oscillano lentamente, con l'etichetta DEMO.
    ===================================================================== */
 function readIndoor() {
+  const d = station, t = d ? parseUtc(d.room_observation_time_utc) : null;
+  if (!isDemo && t && (Date.now() - t) / 60e3 <= CONFIG.STALE_MIN && num(d.room_temperature) !== null) {
+    return { temp: num(d.room_temperature), rh: num(d.room_rh), demo: false };
+  }
   if (CONFIG.INDOOR_DEMO || isDemo) {
     const ph = Date.now() / (6 * 3600e3) * 2 * Math.PI;        // ciclo di 6 ore
     return { temp: 20.4 + 0.6 * Math.sin(ph), rh: 52 + 5 * Math.sin(ph * 0.7 + 1), demo: true };

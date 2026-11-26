@@ -60,7 +60,9 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 
 | Dato | Fonte | Note |
 |---|---|---|
-| Temperatura, min/max, umidità, vento, pioggia, pressione | **MeteoNetwork, stazione `mrc065` Celletta/Pentagono (Pesaro)**, tramite il Worker | ~3-4 km da casa. Licenza CC BY 4.0. |
+| Temperatura, umidità, minima/massima di oggi | **Stazione di casa: Ecowitt GW1200**, sensore esterno sul canale 1, tramite il cloud ecowitt.net e il Worker (dal 26/11/2026) | Min/max calcolate dal Worker (si azzerano a mezzanotte, ora italiana): il primo giorno partono dal momento dell'attivazione. Se Ecowitt non risponde si torna a MeteoNetwork. |
+| Vento, pioggia, pressione | **MeteoNetwork, stazione `mrc065` Celletta/Pentagono (Pesaro)**, tramite il Worker | ~3-4 km da casa. Licenza CC BY 4.0. Il vento ha un suo orario (`wind_observation_time_utc`): se è vecchio viene nascosto. |
+| Temperatura e umidità della camera (`camera.html`) | **Ecowitt**, canale `ECOWITT_ROOM` (predefinito ch2) | Finché il sensore non c'è: valori finti con etichetta DEMO (`INDOOR_DEMO`). |
 | Barre orarie pioggia, "Pioggia tra X minuti", "fino alle…" | **Visual Crossing** (gratis, senza chiave) | Solo dati orari nel piano gratuito. |
 | Previsione prossimi 2 giorni | **Visual Crossing** (stessa richiesta delle barre) | Icona, tempmin, tempmax, precipprob. |
 | Riserva se Visual Crossing non risponde | **Open-Meteo** | Orario + giornaliero. CC BY 4.0. |
@@ -95,6 +97,14 @@ chiude da solo dopo 8 s o con un tocco) e pulsante **⛶** (schermo intero).
 | `MNW_TOKEN` | Secret | Token MeteoNetwork (non scade; si ottiene con `POST https://api.meteonetwork.it/v3/login` con email e password di my.meteonetwork.it) |
 | `ALLOWED_ORIGINS` | Text | `https://marchio11.github.io,https://meteo-marchionni.pages.dev` (l'indirizzo della pagina **deve** esserci, altrimenti i dati della stazione non arrivano) |
 | `MAIN_STATION` | Text, facoltativa | Predefinita `mrc065` |
+| `ECOWITT_APP_KEY` | Secret | Application Key di ecowitt.net (profilo → API) |
+| `ECOWITT_API_KEY` | Secret | API Key di ecowitt.net |
+| `ECOWITT_MAC` | Text | MAC del GW1200 (app Ecowitt → dispositivo → informazioni) |
+| `ECOWITT_OUT` | Text, facoltativa | Sensore esterno: `ch1`…`ch8` oppure `outdoor`. Predefinito `ch1` |
+| `ECOWITT_ROOM` | Text, facoltativa | Sensore della camera: `ch1`…`ch8` oppure `none`. Predefinito `ch2` |
+| **Legame** `METEO_KV` | KV namespace (Settings → Bindings) | Memoria condivisa tra le copie del Worker: le API vengono chiamate al massimo una volta ogni 5 minuti (risolve gli errori 429 "troppe richieste" di MeteoNetwork). Senza KV il Worker funziona lo stesso, con la sola memoria locale. |
+
+Prova del Worker: `…workers.dev/?debug=1` mostra se Ecowitt e la KV sono configurati, quali sensori arrivano e quali dati vengono usati (mai le chiavi).
 | `RAIN_STATION` | Text, facoltativa | Predefinita = `MAIN_STATION` (serve solo se la pioggia deve arrivare da un'altra stazione) |
 
 La vecchia variabile `STATION` non è più usata.
@@ -138,7 +148,7 @@ Aggiungere all'indirizzo: `?demo=1` (dati di esempio), `?demo=stale` (dato vecch
 
 ## Problemi già risolti (da non reintrodurre)
 
-- **Cache del Worker su `*.workers.dev`:** `caches.default` lì non funziona, quindi ogni richiesta arrivava a MeteoNetwork e si superava il limite (5 richieste/minuto, max 1 al secondo). Ora il Worker tiene la risposta in memoria per 5 minuti e non chiama MeteoNetwork più di una volta al minuto; in caso di errore restituisce l'ultimo dato valido.
+- **Cache del Worker su `*.workers.dev`** (risolto del tutto il 26/11/2026 con la memoria condivisa KV `METEO_KV`, perché Cloudflare può far girare più copie del Worker, ognuna con la sua memoria): `caches.default` lì non funziona, quindi ogni richiesta arrivava a MeteoNetwork e si superava il limite (5 richieste/minuto, max 1 al secondo). Ora il Worker tiene la risposta in memoria per 5 minuti e non chiama MeteoNetwork più di una volta al minuto; in caso di errore restituisce l'ultimo dato valido.
 - **Spazio vuoto in basso a sinistra:** con l'avviso arancione nascosto, i riquadri finivano in una riga ad altezza automatica. Ora `.left` è una colonna flex e `.tiles` ha `flex: 1`.
 - **Storico pioggia mescolato tra stazioni:** ora la chiave dipende dalla stazione.
 - **Dashboard "ingrandita" con il fondo fuori schermo (alba/tramonto e barre pioggia non visibili):** sul tablet, dopo una ricarica fatta dalla pagina stessa (aggiornamento automatico o ricarica giornaliera), Chrome a volte dichiara un'altezza più grande di quella visibile (~5-6%, circa la barra di navigazione di Android); riaprendo l'app torna giusta. Ora tutte le misure del CSS usano `--vh` (impostata da `fitViewport()`) invece di `vh`: all'apertura a mano la pagina memorizza l'altezza (`localStorage`, chiave `goodHeight`), e dopo una ricarica automatica (segnata con `sessionStorage.selfReload`) non usa mai un'altezza maggiore. Le righe delle griglie sono `minmax(0, …fr)` così un contenuto alto non le allarga. Il pannello ⓘ mostra in fondo le ultime misure ("corretta a …" quando è intervenuta la correzione). Non tornare a `vh`/`100dvh` nel CSS e usare sempre `selfReload()` per le ricariche automatiche.

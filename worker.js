@@ -1,112 +1,212 @@
 /**
- * Ponte Cloudflare Worker per la dashboard meteo.
+ * Ponte Cloudflare Worker per le dashboard meteo (salotto e camera).
  *
- * Perché serve: l'API MeteoNetwork richiede un token personale e non permette
- * chiamate dirette dal browser (niente intestazioni CORS). Il Worker:
- *   - tiene il token segreto (non finisce mai nella pagina pubblica)
- *   - legge tutti i dati da una stazione (MAIN_STATION, predefinita mrc065
- *     Celletta/Pentagono – Pesaro). Facoltativamente la pioggia può arrivare
- *     da un'altra stazione (RAIN_STATION)
- *   - riusa la stessa risposta per 5 minuti e non chiama MeteoNetwork
- *     più di una volta al minuto, anche se la pagina viene ricaricata spesso
- *   - aggiunge le intestazioni CORS per la tua pagina
+ * Fonti:
+ *   - ECOWITT (il gateway GW1200 di casa, tramite il cloud ecowitt.net):
+ *       temperatura e umidità esterne (sensore sul canale ECOWITT_OUT, predefinito ch1),
+ *       minima e massima di oggi calcolate dal Worker,
+ *       temperatura e umidità della camera (canale ECOWITT_ROOM, predefinito ch2) se il sensore c'è.
+ *   - METEONETWORK (stazione MAIN_STATION, predefinita mrc065 Celletta/Pentagono – Pesaro):
+ *       vento, pioggia e pressione; e anche temperatura/umidità se Ecowitt non risponde.
  *
- * Nota: su un indirizzo *.workers.dev la cache di Cloudflare (caches.default)
- * non ha effetto, quindi la risposta viene tenuta anche in memoria.
+ * Perché serve il Worker: le chiavi (token MeteoNetwork, chiavi Ecowitt) non devono finire
+ * nella pagina pubblica, e le due API non mandano le intestazioni CORS per il browser.
+ *
+ * Limiti di MeteoNetwork (5 richieste al minuto): Cloudflare può far girare più copie del
+ * Worker, ognuna con la sua memoria. Per questo l'ultima risposta viene salvata in una memoria
+ * CONDIVISA (Workers KV, legame METEO_KV): tutte le copie la vedono, quindi le API vengono
+ * chiamate al massimo una volta ogni CACHE_SECONDS. Senza KV il Worker funziona lo stesso,
+ * con la sola memoria della singola copia (come prima).
  *
  * Impostazioni del Worker (Settings → Variables and Secrets):
- *   MNW_TOKEN        (Secret)  il token MeteoNetwork, es. 1234|abcdEf...
- *   ALLOWED_ORIGINS  (Text)    https://TUONOME.github.io   (più origini separate da virgola, * = tutte)
- *   MAIN_STATION     (Text, facoltativa)  predefinita: mrc065 (Celletta/Pentagono)
+ *   MNW_TOKEN        (Secret)  token MeteoNetwork
+ *   ALLOWED_ORIGINS  (Text)    indirizzi delle pagine, separati da virgola
+ *   MAIN_STATION     (Text, facoltativa)  predefinita: mrc065
  *   RAIN_STATION     (Text, facoltativa)  predefinita: la stessa di MAIN_STATION
- *   (la vecchia variabile STATION non viene più usata e si può cancellare)
+ *   ECOWITT_APP_KEY  (Secret)  Application Key di ecowitt.net
+ *   ECOWITT_API_KEY  (Secret)  API Key di ecowitt.net
+ *   ECOWITT_MAC      (Text)    MAC del GW1200, es. AA:BB:CC:DD:EE:FF
+ *   ECOWITT_OUT      (Text, facoltativa)  sensore esterno: ch1 … ch8 oppure outdoor. Predefinito: ch1
+ *   ECOWITT_ROOM     (Text, facoltativa)  sensore della camera: ch1 … ch8, oppure none. Predefinito: ch2
+ * Legame (Settings → Bindings):
+ *   METEO_KV         (KV namespace)  memoria condivisa
+ *
+ * Prova: aggiungere ?debug=1 all'indirizzo del Worker per vedere cosa arriva da Ecowitt
+ * (solo dati meteo, mai le chiavi).
  */
 
-const CACHE_SECONDS = 300;    // riuso della risposta valida
-const MIN_GAP_SECONDS = 60;   // mai più di un giro di chiamate a MeteoNetwork al minuto
+const CACHE_SECONDS = 300;     // le pagine ricevono la stessa risposta per 5 minuti
+const MIN_GAP_SECONDS = 60;    // mai più di un giro di chiamate al minuto
+const ECO_STALE_MIN = 30;      // un dato Ecowitt più vecchio di così non viene usato
 const RAIN_FIELDS = ['daily_rain', 'rain_rate'];
+const TZ = 'Europe/Rome';      // per azzerare minima e massima a mezzanotte
+const KV_KEY = 'stato-v1';
 
-// Memoria del Worker (resta finché Cloudflare tiene attiva l'istanza)
-let memo = { body: null, at: 0 };
-let lastCallAt = 0;
+// Memoria della singola copia del Worker (riserva se manca la KV)
+let memo = null;
 
 export default {
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
-
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     if (request.method !== 'GET') return json({ ok: false, error: 'metodo non permesso' }, 405, cors);
-    if (!env.MNW_TOKEN) return json({ ok: false, error: 'token MeteoNetwork mancante nel Worker' }, 500, cors);
 
-    const mainStation = String(env.MAIN_STATION || 'mrc065').toLowerCase();
-    const rainStation = String(env.RAIN_STATION || mainStation).toLowerCase();
+    const url = new URL(request.url);
+    if (url.searchParams.get('debug') === '1') return debug(env, cors);
+
     const now = Date.now();
+    let state = await loadState(env);
 
-    // 1) risposta recente in memoria
-    if (memo.body && now - memo.at < CACHE_SECONDS * 1000) return ok(memo.body, cors);
+    // 1) risposta recente: la riuso
+    if (state && state.body && now - state.at < CACHE_SECONDS * 1000) return ok(state.body, cors);
 
-    // 2) cache Cloudflare (funziona solo con un dominio personalizzato)
-    const cache = caches.default;
-    const cacheKey = new Request(`https://cache.internal/mnw/${mainStation}-${rainStation}`);
-    try {
-      const hit = await cache.match(cacheKey);
-      if (hit) {
-        const body = await hit.text();
-        memo = { body, at: now };
-        return ok(body, cors);
-      }
-    } catch { /* cache non disponibile */ }
-
-    // 3) protezione dai limiti: se ho chiamato da meno di un minuto, non richiamo
-    if (now - lastCallAt < MIN_GAP_SECONDS * 1000) {
-      if (memo.body) return ok(memo.body, cors);
+    // 2) qualcun altro ha appena chiamato le API: aspetto e intanto riuso l'ultimo dato
+    if (state && state.callAt && now - state.callAt < MIN_GAP_SECONDS * 1000) {
+      if (state.body) return ok(state.body, cors);
       return json({ ok: false, error: 'attendo un minuto prima di richiedere di nuovo i dati' }, 503, cors);
     }
-    lastCallAt = now;
+    state = state || {};
+    state.callAt = now;
+    await saveState(env, ctx, state);   // segno subito la chiamata, così le altre copie aspettano
 
-    // Le stazioni si leggono SENZA il controllo qualità di MeteoNetwork
-    // (il filtro a volte scarta letture intere o la sola pioggia).
+    // 3) chiamo le due fonti insieme
+    const [mnw, eco] = await Promise.all([getMeteoNetwork(env), getEcowitt(env)]);
+    if (mnw.data) state.mnw = mnw.data;          // se una fonte fallisce tengo il suo ultimo dato
+    if (eco.data) state.eco = eco.data;
 
-    // 4) stazione principale (obbligatoria)
-    const main = await getStation(mainStation, env);
-    if (main.error) {
-      if (main.error.startsWith('token MeteoNetwork non valido')) return json({ ok: false, error: main.error }, 502, cors);
-      return fallback(main.error, main.status, cors);
-    }
-    const d = main.data;
-    d.rain_station_code = rainStation;
-    d.rain_observation_time_utc = d.observation_time_utc;
-
-    // 5) pioggia da un'altra stazione, solo se RAIN_STATION è diversa
-    if (rainStation !== mainStation) {
-      for (const k of RAIN_FIELDS) d[k] = null;
-      d.rain_observation_time_utc = null;
-      await sleep(1100); // MeteoNetwork chiede al massimo 1 richiesta al secondo
-      const rain = await getStation(rainStation, env);
-      if (rain.error) {
-        d.rain_error = rain.error;
-      } else {
-        const r = rain.data;
-        d.rain_observation_time_utc = r.observation_time_utc;
-        for (const k of RAIN_FIELDS) d[k] = r[k] ?? null;
-      }
+    if (!state.mnw && !state.eco) {
+      return json({ ok: false, error: [mnw.error, eco.error].filter(Boolean).join(' · ') || 'nessun dato' }, 502, cors);
     }
 
-    const body = JSON.stringify({ ok: true, fetched_at: new Date().toISOString(), data: d });
-    memo = { body, at: now };
-    ctx.waitUntil(cache.put(cacheKey, new Response(body, {
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${CACHE_SECONDS}` },
-    })).catch(() => {}));
+    // 4) minima e massima di oggi dal sensore esterno Ecowitt (azzerate a mezzanotte)
+    const out = ecoOutdoor(state.eco, now, env);
+    if (out) {
+      const day = localDay(out.time);
+      if (state.day !== day) { state.day = day; state.tmin = out.temp; state.tmax = out.temp; }
+      state.tmin = Math.min(state.tmin ?? out.temp, out.temp);
+      state.tmax = Math.max(state.tmax ?? out.temp, out.temp);
+    }
 
-    return ok(body, cors);
+    const data = merge(state, out, now, env);
+    data.errors = [mnw.error, eco.error].filter(Boolean);
+    state.body = JSON.stringify({ ok: true, fetched_at: new Date(now).toISOString(), data });
+    state.at = now;
+    await saveState(env, ctx, state);
+    return ok(state.body, cors);
   },
 };
 
-// Legge l'ultimo dato di una stazione (di norma senza filtro qualità).
-// Restituisce { data } oppure { error, status }.
-async function getStation(code, env, quality = false) {
-  const url = `https://api.meteonetwork.it/v3/data-realtime/${encodeURIComponent(code)}` +
-    (quality ? '' : '?data_quality=false');
+/* ---------------- unione dei dati ---------------- */
+
+// Parte dai dati MeteoNetwork (vento, pioggia, pressione) e sostituisce temperatura e
+// umidità con quelle del sensore Ecowitt, se sono recenti.
+function merge(state, out, now, env) {
+  const m = state.mnw || {};
+  const d = { ...m };
+  d.mnw_observation_time_utc = m.observation_time_utc || null;
+  d.wind_observation_time_utc = m.observation_time_utc || null;
+  d.rain_observation_time_utc = m.rain_observation_time_utc || m.observation_time_utc || null;
+
+  if (out) {
+    d.temperature = String(out.temp);
+    d.rh = out.rh === null ? null : String(out.rh);
+    d.current_tmin = String(state.tmin);
+    d.current_tmax = String(state.tmax);
+    d.observation_time_utc = utcString(out.time);
+    d.temp_source = 'ecowitt';
+  } else {
+    d.temp_source = 'meteonetwork';
+  }
+  if (!d.station_code) d.station_code = String(env.MAIN_STATION || 'mrc065').toLowerCase();
+
+  const room = ecoChannel(state.eco, env.ECOWITT_ROOM || 'ch2', now);
+  if (room) {
+    d.room_temperature = String(room.temp);
+    d.room_rh = room.rh === null ? null : String(room.rh);
+    d.room_observation_time_utc = utcString(room.time);
+  }
+  return d;
+}
+
+/* ---------------- Ecowitt ---------------- */
+
+async function getEcowitt(env) {
+  if (!env.ECOWITT_APP_KEY || !env.ECOWITT_API_KEY || !env.ECOWITT_MAC) return { error: null }; // non configurato: si usa solo MeteoNetwork
+  const q = new URLSearchParams({
+    application_key: env.ECOWITT_APP_KEY, api_key: env.ECOWITT_API_KEY, mac: env.ECOWITT_MAC,
+    call_back: 'all', temp_unitid: '1', pressure_unitid: '3', wind_speed_unitid: '7', rainfall_unitid: '12',
+  });
+  let res, j;
+  try {
+    res = await fetch('https://api.ecowitt.net/api/v3/device/real_time?' + q, { headers: { Accept: 'application/json' } });
+    j = await res.json();
+  } catch {
+    return { error: 'Ecowitt non raggiungibile' };
+  }
+  if (!res.ok || !j || j.code !== 0) return { error: `Ecowitt errore: ${(j && j.msg) || 'HTTP ' + res.status}` };
+  if (!j.data || typeof j.data !== 'object' || Array.isArray(j.data)) return { error: 'Ecowitt: nessun dato (il gateway carica su ecowitt.net?)' };
+  return { data: j.data };
+}
+
+// Temperatura e umidità di un sensore: 'outdoor' oppure 'ch1' … 'ch8'
+function ecoChannel(eco, which, now) {
+  if (!eco || !which || which === 'none') return null;
+  const w = String(which).toLowerCase().trim();
+  const block = w === 'outdoor' ? eco.outdoor : eco['temp_and_humidity_ch' + w.replace(/\D/g, '')];
+  if (!block || !block.temperature) return null;
+  const temp = num(block.temperature.value);
+  const time = Number(block.temperature.time) * 1000;
+  if (temp === null || !time || now - time > ECO_STALE_MIN * 60e3) return null;
+  const rh = block.humidity ? num(block.humidity.value) : null;
+  return { temp, rh, time };
+}
+function ecoOutdoor(eco, now, env) {
+  return ecoChannel(eco, env.ECOWITT_OUT || 'ch1', now);
+}
+
+async function debug(env, cors) {
+  const eco = await getEcowitt(env);
+  const now = Date.now();
+  return json({
+    ecowitt_configurato: !!(env.ECOWITT_APP_KEY && env.ECOWITT_API_KEY && env.ECOWITT_MAC),
+    kv_collegata: !!env.METEO_KV,
+    errore: eco.error || null,
+    sensori_trovati: eco.data ? Object.keys(eco.data) : [],
+    esterno_usato: ecoOutdoor(eco.data, now, env),
+    camera_usata: ecoChannel(eco.data, env.ECOWITT_ROOM || 'ch2', now),
+    dati_ecowitt: eco.data || null,
+  }, 200, cors);
+}
+
+/* ---------------- MeteoNetwork ---------------- */
+
+async function getMeteoNetwork(env) {
+  if (!env.MNW_TOKEN) return { error: 'token MeteoNetwork mancante nel Worker' };
+  const mainStation = String(env.MAIN_STATION || 'mrc065').toLowerCase();
+  const rainStation = String(env.RAIN_STATION || mainStation).toLowerCase();
+  const main = await getStation(mainStation, env);
+  if (main.error) return { error: main.error };
+  const d = main.data;
+  d.rain_station_code = rainStation;
+  d.rain_observation_time_utc = d.observation_time_utc;
+  if (rainStation !== mainStation) {
+    for (const k of RAIN_FIELDS) d[k] = null;
+    d.rain_observation_time_utc = null;
+    await sleep(1100);   // MeteoNetwork: al massimo 1 richiesta al secondo
+    const rain = await getStation(rainStation, env);
+    if (rain.error) d.rain_error = rain.error;
+    else {
+      d.rain_observation_time_utc = rain.data.observation_time_utc;
+      for (const k of RAIN_FIELDS) d[k] = rain.data[k] ?? null;
+    }
+  }
+  return { data: d };
+}
+
+// Ultimo dato di una stazione, senza il controllo qualità di MeteoNetwork
+// (il filtro a volte scarta letture intere o la sola pioggia).
+async function getStation(code, env) {
+  const url = `https://api.meteonetwork.it/v3/data-realtime/${encodeURIComponent(code)}?data_quality=false`;
   let res;
   try {
     res = await fetch(url, {
@@ -117,37 +217,57 @@ async function getStation(code, env, quality = false) {
       },
     });
   } catch {
-    return { error: 'MeteoNetwork non raggiungibile', status: 502 };
+    return { error: 'MeteoNetwork non raggiungibile' };
   }
-  // Testo della risposta (accorciato), riportato negli errori per capire cosa è successo
   const text = await res.text().catch(() => '');
   const why = `HTTP ${res.status}${text ? ': ' + text.slice(0, 160) : ''}`;
-  if (res.status === 204) return { error: `nessun dato dalla stazione ${code} (${why})`, status: 200 };
-  if (res.status === 401) return { error: `token MeteoNetwork non valido (${why})`, status: 502 };
-  if (res.status === 429) return { error: `troppe richieste a MeteoNetwork, riprovo più tardi (${why})`, status: 503 };
-  if (!res.ok) return { error: `MeteoNetwork errore per ${code} (${why})`, status: 502 };
+  if (res.status === 204) return { error: `nessun dato dalla stazione ${code} (${why})` };
+  if (res.status === 401) return { error: `token MeteoNetwork non valido (${why})` };
+  if (res.status === 429) return { error: `troppe richieste a MeteoNetwork, riprovo più tardi (${why})` };
+  if (!res.ok) return { error: `MeteoNetwork errore per ${code} (${why})` };
   let j;
-  try { j = JSON.parse(text); } catch { return { error: `risposta non valida per ${code} (${why})`, status: 502 }; }
+  try { j = JSON.parse(text); } catch { return { error: `risposta non valida per ${code} (${why})` }; }
   const d = Array.isArray(j) ? j[0] : j;
-  if (!d || !d.observation_time_utc) return { error: `nessun dato dalla stazione ${code} (${why})`, status: 200 };
+  if (!d || !d.observation_time_utc) return { error: `nessun dato dalla stazione ${code} (${why})` };
   return { data: d };
 }
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+/* ---------------- memoria condivisa (KV) ---------------- */
 
-// In caso di errore, se ho un dato precedente lo restituisco:
-// è la pagina a decidere se è troppo vecchio da mostrare.
-function fallback(error, status, cors) {
-  if (memo.body) return ok(memo.body, cors);
-  return json({ ok: false, error }, status, cors);
+async function loadState(env) {
+  if (env.METEO_KV) {
+    try {
+      const s = await env.METEO_KV.get(KV_KEY, 'json');
+      if (s) { memo = s; return s; }
+    } catch { /* KV non disponibile: uso la memoria locale */ }
+  }
+  return memo ? { ...memo } : null;
 }
+async function saveState(env, ctx, state) {
+  memo = { ...state };
+  if (env.METEO_KV) {
+    try { await env.METEO_KV.put(KV_KEY, JSON.stringify(state)); } catch { /* pazienza: resta la memoria locale */ }
+  }
+}
+
+/* ---------------- utilità ---------------- */
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const utcString = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+const localDay = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(ms));
 
 function ok(body, cors) {
   return new Response(body, {
     headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
   });
 }
-
+function json(obj, status, cors) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
 function corsHeaders(request, env) {
   const origin = request.headers.get('Origin') || '';
   const allowed = String(env.ALLOWED_ORIGINS || '*').split(',').map(s => s.trim()).filter(Boolean);
@@ -159,11 +279,4 @@ function corsHeaders(request, env) {
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
-}
-
-function json(obj, status, cors) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-  });
 }
