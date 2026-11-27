@@ -142,12 +142,12 @@
   .u-stack .t-arrow { width: .26em; height: .26em; }
   .t-temp.stale-in .val { opacity: .35; }
   /* minima e massima in piccolo sotto la temperatura */
-  /* riga in alto: massima (rossa) · titolo · minima (blu) */
+  /* riga in alto: minima (blu) · titolo · massima (rossa) */
   .t-head { display: flex; align-items: center; justify-content: space-between; gap: .6vw; white-space: nowrap; }
   .t-head .label { flex: none; }
   .hd { font-size: calc(3.6 * var(--vh)); font-weight: 700; min-width: 0; flex: 1; }
-  .hd-max { color: var(--hot); }
-  .hd-min { color: var(--cold); text-align: right; }
+  .hd-min { color: var(--cold); }
+  .hd-max { color: var(--hot); text-align: right; }
   /* umidità sotto la temperatura, ben leggibile */
   .hum-row { display: flex; justify-content: center; align-items: baseline; gap: .9vw; white-space: nowrap; }
   .hum-row .k { font-size: calc(2.8 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
@@ -349,7 +349,7 @@
       <div class="notice" id="notice"><b id="noticeTitle"></b><span id="noticeText"></span></div>
       <div class="tiles">
         <div class="tile t-temp" data-st>
-          <div class="t-head num"><span class="hd hd-max" title="Massima di oggi"><span id="tmax">—</span></span><div class="label">Fuori</div><span class="hd hd-min" title="Minima di oggi"><span id="tmin">—</span></span></div>
+          <div class="t-head num"><span class="hd hd-min" title="Minima di oggi"><span id="tmin">—</span></span><div class="label">Fuori</div><span class="hd hd-max" title="Massima di oggi"><span id="tmax">—</span></span></div>
           <div class="temp-row">
             <div class="val num"><span id="temp">—</span><span class="u-stack"><svg class="t-arrow hidden" id="tempArrow" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
@@ -359,7 +359,7 @@
         </div>
 
         <div class="tile t-temp" id="tIn">
-          <div class="t-head num"><span class="hd hd-max" title="Massima di oggi"><span id="inTmax">—</span></span><div class="label">Salotto</div><span class="hd hd-min" title="Minima di oggi"><span id="inTmin">—</span></span></div>
+          <div class="t-head num"><span class="hd hd-min" title="Minima di oggi"><span id="inTmin">—</span></span><div class="label">Salotto</div><span class="hd hd-max" title="Massima di oggi"><span id="inTmax">—</span></span></div>
           <div class="temp-row">
             <div class="val num"><span id="inTemp">—</span><span class="u-stack"><svg class="t-arrow hidden" id="inArrow" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
