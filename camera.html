@@ -193,7 +193,7 @@
    ===================================================================== */
 // Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate).
-const APP_VERSION = '2026-11-26.2';
+const APP_VERSION = '2026-11-27.1';
 
 const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
@@ -605,10 +605,17 @@ let wakeLock = null;
    energetico, finestre di sistema, ricarica della pagina…): lo richiedo di nuovo
    subito dopo una revoca e comunque ogni minuto (vedi setInterval più sotto).
    Ogni evento finisce in un piccolo registro: aprire la pagina con ?diag=1 per vederlo. */
+// Batteria (se il browser la espone): "batteria 80%, in carica"
+let battery = null;
+if (navigator.getBattery) navigator.getBattery().then(b => {
+  battery = b;
+  b.addEventListener('chargingchange', () => wlLog(b.charging ? 'ricarica ripresa' : 'ricarica interrotta'));
+}).catch(() => {});
+const battTxt = () => battery ? ` · batteria ${Math.round(battery.level * 100)}%${battery.charging ? ', in carica' : ', NON in carica'}` : '';
 function wlLog(msg) {
   const log = store.get('wlLog', []);
-  log.push({ t: Date.now(), msg });
-  store.set('wlLog', log.slice(-30));
+  log.push({ t: Date.now(), msg: msg + battTxt() });
+  store.set('wlLog', log.slice(-60));
   if (params.get('diag') === '1') renderWlLog();
 }
 function renderWlLog() {
@@ -621,11 +628,12 @@ function renderWlLog() {
   const f = (t) => new Date(t).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   box.innerHTML = '<b>Schermo sempre acceso – registro</b><br>' + store.get('wlLog', []).slice().reverse().map(x => `${f(x.t)} · ${x.msg}`).join('<br>');
 }
-let wlFails = 0;
+let wlFails = 0, wlPending = false;
 async function requestWakeLock() {
   if (!('wakeLock' in navigator)) { $('wl').title = 'Wake Lock non supportato'; return; }
-  if (wakeLock && !wakeLock.released) return;
+  if ((wakeLock && !wakeLock.released) || wlPending) return;   // niente richieste doppie
   if (document.visibilityState !== 'visible') return;
+  wlPending = true;
   try {
     wakeLock = await navigator.wakeLock.request('screen');
     $('wl').classList.add('on');
@@ -639,8 +647,21 @@ async function requestWakeLock() {
   } catch (e) {
     $('wl').classList.remove('on');
     if (!wlFails++) wlLog('rifiutato: ' + ((e && e.message) || e));
-  }
+  } finally { wlPending = false; }
 }
+// Diagnostica: quando la pagina viene nascosta o torna visibile, e l'ultimo "segno di vita".
+// Ogni minuto salvo l'ora; se alla riapertura l'ultimo segno di vita è vecchio, lo annoto.
+document.addEventListener('visibilitychange', () => wlLog(document.visibilityState === 'visible' ? 'pagina di nuovo visibile' : 'pagina NASCOSTA'));
+document.addEventListener('freeze', () => wlLog('pagina sospesa dal browser'));
+(() => {
+  const last = store.get('wlAlive', 0);
+  if (last && Date.now() - last > 3 * 60e3) {
+    const f = new Date(last).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    wlLog(`pagina riaperta: ultima attività alle ${f}`);
+  }
+  store.set('wlAlive', Date.now());
+  setInterval(() => store.set('wlAlive', Date.now()), 60e3);
+})();
 document.addEventListener('pointerdown', requestWakeLock);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { requestWakeLock(); loadStation(); }
