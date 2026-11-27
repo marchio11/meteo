@@ -140,8 +140,24 @@
   .u-stack { display: inline-flex; flex-direction: column; align-items: center; margin-left: .06em; padding-top: .08em; gap: .04em; }
   .u-stack .u { margin-left: 0; font-size: .34em; }
   .u-stack .t-arrow { width: .26em; height: .26em; }
-  .t-temp.stale-in .val, .t-temp.stale-in .mm-row { opacity: .35; }
+  .t-temp.stale-in .val { opacity: .35; }
   /* minima e massima in piccolo sotto la temperatura */
+  /* riga in alto: massima (rossa) · titolo · minima (blu) */
+  .t-head { display: flex; align-items: center; justify-content: space-between; gap: .6vw; white-space: nowrap; }
+  .t-head .label { flex: none; }
+  .hd { font-size: calc(3.6 * var(--vh)); font-weight: 700; min-width: 0; flex: 1; }
+  .hd-max { color: var(--hot); }
+  .hd-min { color: var(--cold); text-align: right; }
+  /* umidità sotto la temperatura, ben leggibile */
+  .hum-row { display: flex; justify-content: center; align-items: baseline; gap: .9vw; white-space: nowrap; }
+  .hum-row .k { font-size: calc(2.8 * var(--vh)); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+  .hum-row b { font-size: calc(5 * var(--vh)); font-weight: 700; }
+  .hum-row b::before { content: '💧'; font-size: .7em; margin-right: .25em; }
+  .t-temp.stale-in .hum-row, .t-temp.stale-in .t-head .hd { opacity: .35; }
+  /* qualità dell'aria: pallino con il colore ufficiale dell'indice europeo */
+  .air-val { display: flex; align-items: center; gap: .7vw; font-size: calc(5.2 * var(--vh)) !important; }
+  .air-dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: var(--dim); flex: none; }
+  .t-air.bad { border-color: rgba(255,80,80,.7); background: linear-gradient(135deg, rgba(255,80,80,.16), var(--tile)); }
   .mm-row { display: flex; justify-content: center; align-items: baseline; gap: 2.4vw; font-size: calc(3.6 * var(--vh)); font-weight: 700; white-space: nowrap; }
   .mm-row .k { font-size: .62em; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; margin-right: .5vw; }
   .mm-row .max { color: var(--hot); }
@@ -159,8 +175,6 @@
   .mm.min { color: var(--cold); }
   .mm.max { color: var(--hot); }
 
-  .hum-bar { height: calc(1 * var(--vh)); background: var(--tile-2); border-radius: calc(1 * var(--vh)); margin-top: calc(1.4 * var(--vh)); overflow: hidden; }
-  .hum-bar i { display: block; height: 100%; width: 0; background: var(--cold); border-radius: calc(1 * var(--vh)); transition: width .6s; }
 
   .wind-row { display: flex; align-items: flex-end; gap: 1.2vw; margin-top: auto; }
   .wind-row .val { margin-top: 0; }
@@ -335,29 +349,29 @@
       <div class="notice" id="notice"><b id="noticeTitle"></b><span id="noticeText"></span></div>
       <div class="tiles">
         <div class="tile t-temp" data-st>
-          <div class="label">Fuori</div>
+          <div class="t-head num"><span class="hd hd-max" title="Massima di oggi"><span id="tmax">—</span></span><div class="label">Fuori</div><span class="hd hd-min" title="Minima di oggi"><span id="tmin">—</span></span></div>
           <div class="temp-row">
             <div class="val num"><span id="temp">—</span><span class="u-stack"><svg class="t-arrow hidden" id="tempArrow" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
             </svg><span class="u">°C</span></span></div>
           </div>
-          <div class="mm-row num"><span class="max"><span class="k">Max</span><span id="tmax">—</span></span><span class="min"><span class="k">Min</span><span id="tmin">—</span></span></div>
+          <div class="hum-row"><span class="k">Umidità</span><b class="num" id="rh">—</b></div>
         </div>
 
         <div class="tile t-temp" id="tIn">
-          <div class="label">Salotto</div>
+          <div class="t-head num"><span class="hd hd-max" title="Massima di oggi"><span id="inTmax">—</span></span><div class="label">Salotto</div><span class="hd hd-min" title="Minima di oggi"><span id="inTmin">—</span></span></div>
           <div class="temp-row">
             <div class="val num"><span id="inTemp">—</span><span class="u-stack"><svg class="t-arrow hidden" id="inArrow" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M50 8 L88 52 L64 52 L64 92 L36 92 L36 52 L12 52 Z" fill="currentColor"/>
             </svg><span class="u">°C</span></span></div>
           </div>
-          <div class="mm-row num"><span class="max"><span class="k">Max</span><span id="inTmax">—</span></span><span class="min"><span class="k">Min</span><span id="inTmin">—</span></span></div>
+          <div class="hum-row"><span class="k">Umidità</span><b class="num" id="inRh">—</b></div>
         </div>
 
-        <div class="tile t-third" data-st>
-          <div class="label">Umidità</div>
-          <div class="val num" id="rh">—<span class="u">%</span></div>
-          <div class="hum-bar"><i id="rhBar"></i></div>
+        <div class="tile t-third t-air" id="tAir">
+          <div class="label">Qualità aria</div>
+          <div class="val air-val" id="airVal"><i class="air-dot"></i><span id="airTxt">—</span></div>
+          <div class="sub">Indice europeo <b class="num" id="airIdx">—</b><br>PM2.5 <b class="num" id="airPm25">—</b> · PM10 <b class="num" id="airPm10">—</b></div>
         </div>
 
         <div class="tile t-third" data-st>
@@ -441,6 +455,7 @@
     <li><b>MeteoNetwork</b> <span>– vento, pioggia e pressione dalla stazione Celletta/Pentagono, Pesaro; anche temperatura e umidità se la stazione di casa non risponde (licenza CC BY 4.0)</span></li>
     <li><b>Visual Crossing</b> <span>– previsioni orarie e dei prossimi giorni</span></li>
     <li><b>Open-Meteo</b> <span>– previsioni di riserva (licenza CC BY 4.0)</span></li>
+    <li><b>Open-Meteo Air Quality · Copernicus CAMS</b> <span>– qualità dell'aria (stime del modello europeo, non centraline)</span></li>
     <li><b>Radar-DPC, Dipartimento della Protezione Civile</b> <span>– radar delle precipitazioni (licenza CC BY-SA 4.0)</span></li>
     <li><b>RainViewer</b> <span>– radar di riserva</span></li>
     <li><b>Esri</b> <span>– mappa di base</span></li>
@@ -484,7 +499,7 @@
    ===================================================================== */
 // Versione della pagina: va cambiata a ogni modifica pubblicata, così il tablet
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate più sotto).
-const APP_VERSION = '2026-11-26.4';
+const APP_VERSION = '2026-11-27.1';
 
 const CONFIG = {
   // Indirizzo del tuo Cloudflare Worker (il "ponte"), es.
@@ -747,7 +762,7 @@ function showNotice(title, text) {
 function blankStation() {
   document.querySelectorAll('[data-st]').forEach(t => t.classList.toggle('stale', true));
   $('temp').textContent = '—'; $('tempArrow').className.baseVal = 't-arrow hidden'; $('tmax').textContent = '—'; $('tmin').textContent = '—';
-  setVal('rh', '—', '%'); $('rhBar').style.width = '0';
+  $('rh').textContent = '—';
   $('rainDay').classList.remove('na');
   setVal('rainDay', '—', 'mm'); $('rainHour').textContent = '—'; $('rainRate').textContent = '—';
   setVal('wind', '—', 'km/h'); $('wind').classList.remove('calm'); $('gust').textContent = '—'; $('windDir').textContent = '—';
@@ -787,8 +802,7 @@ function renderStation() {
   $('tmin').textContent = tmin === null ? '—' : fmt(tmin) + '°';
 
   const rh = num(d.rh);
-  setVal('rh', rh === null ? '—' : Math.round(rh), '%');
-  $('rhBar').style.width = (rh === null ? 0 : Math.min(100, rh)) + '%';
+  $('rh').textContent = rh === null ? '—' : Math.round(rh) + '%';
 
 
   // Pioggia: dalla stazione di Montelabbate, con il suo orario
@@ -865,6 +879,8 @@ function renderIndoor() {
   const mn = fresh ? num(d.indoor_tmin) : null, mx = fresh ? num(d.indoor_tmax) : null;
   $('inTmax').textContent = mx === null ? '—' : fmt(mx) + '°';
   $('inTmin').textContent = mn === null ? '—' : fmt(mn) + '°';
+  const irh = fresh ? num(d.indoor_rh) : null;
+  $('inRh').textContent = irh === null ? '—' : Math.round(irh) + '%';
   if (T === null) $('inArrow').className.baseVal = 't-arrow hidden';
   else renderTempTrend(T, t, 'inArrow', IN_KEY, -0.2);
 }
@@ -1515,7 +1531,42 @@ let lastRefresh = 0;
 function refreshAll() {
   if (Date.now() - lastRefresh < 60e3) return; // evita doppie chiamate
   lastRefresh = Date.now();
-  loadStation(); loadForecast(); loadRadar();
+  loadStation(); loadForecast(); loadRadar(); loadAir();
+}
+
+/* =====================================================================
+   QUALITÀ DELL'ARIA (Open-Meteo Air Quality, modello europeo Copernicus CAMS)
+   Sono stime del modello per la zona di casa (circa 10 km), non misure di centraline.
+   Indice europeo EAQI con le classi e i colori ufficiali; da "Scadente" in su
+   il riquadro si colora di rosso.
+   ===================================================================== */
+const AQI_LEVELS = [   // [fino a, nome, colore]
+  [20, 'Buona', '#50f0e6'], [40, 'Discreta', '#50ccaa'], [60, 'Moderata', '#f0e641'],
+  [80, 'Scadente', '#ff5050'], [100, 'Molto scadente', '#d0305e'], [Infinity, 'Pessima', '#a04bb0'],
+];
+let air = null;
+async function loadAir() {
+  try {
+    if (DEMO && DEMO !== 'off') air = { aqi: 32, pm25: 11, pm10: 14 };
+    else {
+      const u = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${CONFIG.LAT}&longitude=${CONFIG.LON}` +
+        '&current=european_aqi,pm2_5,pm10&timezone=auto';
+      const r = await fetch(u, { cache: 'no-store' });
+      if (!r.ok) throw new Error('errore ' + r.status);
+      const c = (await r.json()).current || {};
+      air = { aqi: num(c.european_aqi), pm25: num(c.pm2_5), pm10: num(c.pm10) };
+    }
+  } catch { /* tengo l'ultimo valore; se non ne ho, il riquadro mostra i trattini */ }
+  renderAir();
+}
+function renderAir() {
+  const a = air, lv = a && a.aqi !== null ? AQI_LEVELS.find(l => a.aqi <= l[0]) : null;
+  $('airTxt').textContent = lv ? lv[1] : '—';
+  $('airVal').querySelector('.air-dot').style.background = lv ? lv[2] : '';
+  $('airIdx').textContent = a && a.aqi !== null ? Math.round(a.aqi) : '—';
+  $('airPm25').textContent = a && a.pm25 !== null ? Math.round(a.pm25) : '—';
+  $('airPm10').textContent = a && a.pm10 !== null ? Math.round(a.pm10) : '—';
+  $('tAir').classList.toggle('bad', !!a && a.aqi !== null && a.aqi > 60);
 }
 
 tickClock();
