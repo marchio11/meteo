@@ -193,7 +193,7 @@
    ===================================================================== */
 // Versione della pagina: cambiarla a ogni modifica pubblicata, così il Pixel
 // si accorge della novità e si ricarica da solo (vedi checkForUpdate).
-const APP_VERSION = '2026-11-27.1';
+const APP_VERSION = '2026-11-28.1';
 
 const CONFIG = {
   WORKER_URL: 'https://meteo-ponte.andrea-marchionni11.workers.dev',  // stesso ponte del salotto
@@ -213,11 +213,15 @@ const CONFIG = {
   // Sensore della camera: se il Worker non passa ancora il sensore (canale ECOWITT_ROOM)…
   INDOOR_DEMO: true,        // se il sensore vero non risponde: true = valori finti (DEMO), false = trattini
 
-  // Shiba: soglie per scegliere il vestito (temperatura esterna)
-  DOG_HOT: 27,        // da qui in su: occhiali da sole e costume
-  DOG_COOL: 16,       // sotto: felpa/maglione
+  // Shiba: soglie per scegliere il vestito (temperatura esterna, °C)
+  DOG_TORRID: 36,     // da qui in su: spossato davanti al ventilatore
+  DOG_HOT: 30,        // da qui in su: occhiali da sole e costume
+  DOG_WARM: 22,       // da qui in su: maglietta a mezze maniche
+  DOG_COOL: 15,       // da qui in su: cappellino e giubbotto di jeans; sotto: felpa
   DOG_COLD: 8,        // sotto: cappotto
-  DOG_WIND: 45,       // raffica in km/h oltre cui è "giornata di vento"
+  DOG_FROST: 0,       // sotto: gelo
+  DOG_WIND: 40,       // raffica in km/h oltre cui è "giornata di vento"
+  DOG_NIGHT_WARM: 22, // di notte, da qui in su (temperatura della camera, se c'è): dorme d'estate
 
   // Comfort della camera da letto
   COMFORT_T: [17, 22],      // °C considerati ideali per dormire
@@ -438,11 +442,18 @@ function renderIndoor() {
    Le immagini vanno nella cartella shiba/ con questi nomi (PNG con sfondo
    trasparente). Se un'immagine manca uso shiba/normale.png, e se manca anche
    quella mostro un segnaposto (emoji). Prove: ?shiba=pioggia (forza uno stato).
-   Ordine di precedenza: notte > pioggia > neve > vento > caldo > freddo > fresco > normale
+   Ordine di precedenza: notte (dorme / dorme-estate) > temporale > pioggia > neve > vento >
+   temperatura (torrido > caldo > maglietta > giubbotto > fresco > freddo > gelo) > normale
    ===================================================================== */
 const DOG_STATES = {
   dorme:   { cap: 'Buonanotte',       acc: '💤' },
+  'dorme-estate': { cap: 'Buonanotte',  acc: '💤' },
+  temporale: { cap: 'Temporale',      acc: '⛈️' },
   pioggia: { cap: 'Piove: ombrello!', acc: '☂️' },
+  torrido: { cap: 'Che afa!',         acc: '🥵' },
+  maglietta: { cap: 'Si sta bene',    acc: '👕' },
+  giubbotto: { cap: 'Mezza stagione', acc: '🧢' },
+  gelo:    { cap: 'Si gela',          acc: '🥶' },
   neve:    { cap: 'Nevica',           acc: '❄️' },
   vento:   { cap: 'Che vento',        acc: '💨' },
   caldo:   { cap: 'Fa caldo',         acc: '🕶️' },
@@ -454,24 +465,36 @@ let nowSky = null;   // condizioni dell'ora in corso dalla previsione: { icon, p
 function dogState() {
   const f = params.get('shiba');
   if (f && DOG_STATES[f]) return f;
-  if (document.body.classList.contains('night')) return 'dorme';
   const d = station, obs = d ? parseUtc(d.observation_time_utc) : null;
   const fresh = obs && (Date.now() - obs) / 60e3 <= CONFIG.STALE_MIN;
   const T = fresh ? num(d.temperature) : null;
+  if (document.body.classList.contains('night')) {
+    // notte calda (in camera, o fuori se il sensore della camera non c'è): dorme d'estate
+    const r = readIndoor(), tn = r && !r.demo ? r.temp : T;
+    return tn !== null && tn >= CONFIG.DOG_NIGHT_WARM ? 'dorme-estate' : 'dorme';
+  }
   const rr = fresh ? num(d.rain_rate) : null;
   const gust = fresh ? num(d.wind_gust) : null;      // nota: è la raffica massima di oggi
   const ws = fresh ? num(d.wind_speed) : null;
   const sky = nowSky ? nowSky.icon : '';
   const snowSky = sky.includes('snow') || sky === 'sleet';
+  if (sky.includes('thunder')) return 'temporale';                         // temporale previsto nell'ora in corso
   if (rr !== null && rr > 0) return T !== null && T <= 1 ? 'neve' : 'pioggia';
   if (snowSky) return 'neve';
   if (/rain|showers|thunder/.test(sky) && (rr === null)) return 'pioggia';   // senza stazione mi fido della previsione
   if (ws !== null && ws >= CONFIG.DOG_WIND * 0.6 && gust !== null && gust >= CONFIG.DOG_WIND) return 'vento';
   if (T === null) return 'normale';
+  return dogByTemp(T);
+}
+// Vestito secondo la temperatura esterna
+function dogByTemp(T) {
+  if (T >= CONFIG.DOG_TORRID) return 'torrido';
   if (T >= CONFIG.DOG_HOT) return 'caldo';
-  if (T < CONFIG.DOG_COLD) return 'freddo';
-  if (T < CONFIG.DOG_COOL) return 'fresco';
-  return 'normale';
+  if (T >= CONFIG.DOG_WARM) return 'maglietta';
+  if (T >= CONFIG.DOG_COOL) return 'giubbotto';
+  if (T >= CONFIG.DOG_COLD) return 'fresco';
+  if (T >= CONFIG.DOG_FROST) return 'freddo';
+  return 'gelo';
 }
 let dogShown = '';
 function renderDog() {
